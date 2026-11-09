@@ -219,6 +219,8 @@ public static class DbMemoryTools
     /// 单状态用 <c>=</c>、多状态用 <c>IN</c>，参数化。
     /// 原先调用方是 <c>$" AND scope = '{EscapeSql(scope)}'"</c> 这种字符串拼接，
     /// 手工转义单引号看着够用，但参数化没有「够不够用」这个问题。
+    /// 最后一处拼串调用方（<see cref="Memory.SearchAsync"/> 的 scope 条件）已于 2026-11-09 收口，
+    /// 全仓再无手工拼值的 SQL 条件。
     /// </summary>
     private static string BuildStatusClause(string[] statuses, List<SqliteParameter> parameters)
     {

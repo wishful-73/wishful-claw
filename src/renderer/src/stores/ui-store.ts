@@ -521,13 +521,6 @@ export const useUIStore = create<UIStore>((set, get) => ({
     }
     set({ activeNavItem: 'chat', chatView: 'session', ...CHAT_SURFACE_NAV_RESET })
   },
-  applyRouteFromLocation: () => {
-    // Placeholder: no URL routing for now. Navigation is driven by state.
-  },
-  applyChatRouteFromLocation: () => {
-    // Placeholder - will be implemented when routing is migrated
-  },
-
   // Browser tab management
   ensureBrowserTab: (url: any, sessionId: any, projectId: any, options: any) =>
     set((state: any) => {

@@ -283,8 +283,6 @@ export interface UIStore {
   navigateToGit: (projectId?: string | null) => void
   navigateToPersona: (projectId?: string | null) => void
   navigateToSession: (sessionId?: string | null) => void
-  applyRouteFromLocation: () => void
-  applyChatRouteFromLocation: () => void
 
   // Right panel tab management
   ensureActivityTab: () => void

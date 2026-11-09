@@ -210,6 +210,10 @@ internal static class Program
             unboundedHits.Any(h => h.Title == "区间内条目")
             && unboundedHits.Any(h => h.Title == "区间外条目"),
             "不给区间时不过滤");
+
+        // scope 参数化（2026-11-09）：拼串时代这一条靠 EscapeSql 兜撇号，现在靠参数 —— 不炸、不误命中。
+        var quotedScope = search.SearchAsync("记忆筛选", "o'brien").GetAwaiter().GetResult();
+        Assert(quotedScope.Count == 0, "含撇号的 scope 不炸且筛空");
     }
 
     private static void InsertMemory(string title, string content, long updatedAt)

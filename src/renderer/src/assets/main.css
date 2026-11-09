@@ -1,3 +1,5 @@
+/* 500 行豁免（2026-11-09，行数以实际为准）：Tailwind v4 单一入口 —— @import 顺序 + @theme inline 主题变量 + @layer 全局层必须同源，
+   拆开只增加跳转成本、不产生排查收益（AGENTS.md §大文件拆分 第 9 条）。 */
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @plugin "@tailwindcss/typography";

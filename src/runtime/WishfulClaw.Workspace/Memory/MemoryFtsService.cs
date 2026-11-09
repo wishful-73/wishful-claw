@@ -39,8 +39,13 @@ public sealed class MemoryFtsService : IMemorySearch, IMemoryReheat
         // below active); include_deprecated additionally surfaces cold /
         // legacy deprecated entries.
         var statusFilter = includeDeprecated ? "" : " AND status IN ('active', 'warm')";
-        var scopeFilter = string.IsNullOrWhiteSpace(scope)
-            ? "" : $" AND scope = '{EscapeSql(scope)}'";
+        // scope 也走参数化（S-328 族收尾）：EscapeSql 拼串本身没有注入风险，但全链路只剩这一处
+        // 拼串 —— 每轮审查都要重新论证「这里为什么可以例外」，口径统一比省一次论证更值钱。
+        // 参数实例由两个通道共用：FTS 段与 LIKE 段互斥执行，且前者的 reader 在进入后者前已释放。
+        var scopeParams = new List<SqliteParameter>(1);
+        var scopeFilter = string.IsNullOrWhiteSpace(scope) ? "" : " AND scope = @scope";
+        if (scopeFilter.Length > 0)
+            scopeParams.Add(new SqliteParameter("@scope", scope));
         // 时间区间（S-101）：FTS 那一段的表别名是 e，LIKE 那一段没有别名 —— 同一个构造器，
         // 只差一个列限定符，免得两处各写一份条件然后各漂一半。
         var ftsTime = MemoryTimeFilter.Build(from, to, "e.");
@@ -67,7 +72,8 @@ public sealed class MemoryFtsService : IMemorySearch, IMemoryReheat
                     LIMIT @limit
                     """;
                 using var reader = db.ExecuteReader(ftsSql,
-                    [new SqliteParameter("@query", ftsQuery), new SqliteParameter("@limit", limit), .. ftsTime.Parameters]);
+                    [new SqliteParameter("@query", ftsQuery), new SqliteParameter("@limit", limit),
+                     .. scopeParams, .. ftsTime.Parameters]);
                 while (reader.Read())
                 {
                     ct.ThrowIfCancellationRequested();
@@ -125,7 +131,7 @@ public sealed class MemoryFtsService : IMemorySearch, IMemoryReheat
                 ORDER BY CASE WHEN status = 'active' THEN 0 ELSE 1 END, score DESC, updated_at DESC
                 LIMIT @limit
                 """;
-            using var reader = db.ExecuteReader(likeSql, [.. likeParams, .. likeTime.Parameters]);
+            using var reader = db.ExecuteReader(likeSql, [.. likeParams, .. scopeParams, .. likeTime.Parameters]);
             while (reader.Read())
             {
                 ct.ThrowIfCancellationRequested();
@@ -201,6 +207,4 @@ public sealed class MemoryFtsService : IMemorySearch, IMemoryReheat
 
     private static string BuildFtsLiteralQuery(string query) =>
         $"\"{query.Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
-
-    private static string EscapeSql(string s) => s.Replace("'", "''", StringComparison.Ordinal);
 }

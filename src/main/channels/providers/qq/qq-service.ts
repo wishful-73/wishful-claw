@@ -27,6 +27,7 @@ import { downloadQQImageRefs } from './download-media'
 import { decodeQQReplyReference, parseQQWsMessage } from './parse-ws-message'
 import { clearSession, loadSession, saveSession } from './session-store'
 import type { QQGatewayPayload } from './qq-config'
+import { logDebug, logInfo } from '../../../lib/logger'
 
 export class QQService implements MessagingChannelService {
   readonly pluginId: string
@@ -67,7 +68,8 @@ export class QQService implements MessagingChannelService {
       !this.instance.config.markdownSupport ||
       parseBooleanConfig(this.instance.config.markdownSupport)
     this.api = new QQApi(appId, clientSecret, { useSandbox, markdownSupport })
-    console.log(
+    logInfo(
+      'main',
       `[qq-bot:${this.pluginId}] Using QQ ${useSandbox ? 'sandbox' : 'production'} API domain, markdown=${markdownSupport}`
     )
     await this.restoreSession()
@@ -77,7 +79,7 @@ export class QQService implements MessagingChannelService {
     this.running = true
     this.emitStatus('starting')
     await this.connectGateway()
-    console.log(`[qq-bot] Started for plugin ${this.pluginId}`)
+    logInfo('main', `[qq-bot] Started for plugin ${this.pluginId}`)
   }
 
   async stop(): Promise<void> {
@@ -88,7 +90,7 @@ export class QQService implements MessagingChannelService {
     this.stopHeartbeat()
     this.closeSocket()
     this.emitStatus('stopped')
-    console.log(`[qq-bot] Stopped for plugin ${this.pluginId}`)
+    logInfo('main', `[qq-bot] Stopped for plugin ${this.pluginId}`)
   }
 
   isRunning(): boolean {
@@ -202,7 +204,8 @@ export class QQService implements MessagingChannelService {
     this.intentLevelIndex = saved.intentLevelIndex
     this.lastSuccessfulIntentLevel = saved.intentLevelIndex
 
-    console.log(
+    logInfo(
+      'main',
       `[qq-bot:${this.pluginId}] Restored session: sessionId=${saved.sessionId}, lastSeq=${saved.lastSeq}, intentLevel=${saved.intentLevelIndex}`
     )
   }
@@ -236,7 +239,7 @@ export class QQService implements MessagingChannelService {
       const gatewayUrl = await this.api.getGatewayUrl()
       if (!this.running) return
 
-      console.log(`[qq-bot:${this.pluginId}] Connecting to ${gatewayUrl}`)
+      logInfo('main', `[qq-bot:${this.pluginId}] Connecting to ${gatewayUrl}`)
 
       this.closeSocket()
 
@@ -245,7 +248,7 @@ export class QQService implements MessagingChannelService {
 
       ws.on('open', () => {
         this.reconnectAttempt = 0
-        console.log(`[qq-bot:${this.pluginId}] Gateway connected`)
+        logInfo('main', `[qq-bot:${this.pluginId}] Gateway connected`)
         this.emitStatus('connected')
       })
 
@@ -265,7 +268,7 @@ export class QQService implements MessagingChannelService {
           this.ws = null
         }
         this.stopHeartbeat()
-        console.log(`[qq-bot:${this.pluginId}] Gateway closed: ${code} ${reason.toString()}`)
+        logInfo('main', `[qq-bot:${this.pluginId}] Gateway closed: ${code} ${reason.toString()}`)
         if (this.running && !this.intentionalClose) {
           this.emitStatus('reconnecting', { code, reason: reason.toString() })
           this.scheduleReconnect()
@@ -315,7 +318,8 @@ export class QQService implements MessagingChannelService {
     }
 
     if (payload.op !== 11) {
-      console.log(
+      logDebug(
+        'main',
         `[qq-bot:${this.pluginId}] Received gateway frame op=${String(payload.op)} t=${payload.t ?? 'unknown'}`
       )
     }
@@ -379,7 +383,8 @@ export class QQService implements MessagingChannelService {
 
           const currentLevel =
             INTENT_LEVELS[Math.min(this.intentLevelIndex, INTENT_LEVELS.length - 1)]
-          console.log(
+          logInfo(
+            'main',
             `[qq-bot:${this.pluginId}] READY with intents ${currentLevel.name} (${currentLevel.description})`
           )
           this.emitStatus('ready', {
@@ -390,13 +395,13 @@ export class QQService implements MessagingChannelService {
         }
 
         if (payload.t === 'RESUMED') {
-          console.log(`[qq-bot:${this.pluginId}] Gateway session resumed`)
+          logInfo('main', `[qq-bot:${this.pluginId}] Gateway session resumed`)
           this.persistSession()
           this.emitStatus('resumed')
           return
         }
 
-        console.log(`[qq-bot:${this.pluginId}] Dispatch event: ${payload.t ?? 'unknown'}`)
+        logDebug('main', `[qq-bot:${this.pluginId}] Dispatch event: ${payload.t ?? 'unknown'}`)
         break
       default:
         return
@@ -425,7 +430,7 @@ export class QQService implements MessagingChannelService {
     const accessToken = await this.api.getGatewayAccessToken()
 
     if (this.sessionId && this.lastSeq != null) {
-      console.log(`[qq-bot:${this.pluginId}] Resuming session ${this.sessionId}`)
+      logInfo('main', `[qq-bot:${this.pluginId}] Resuming session ${this.sessionId}`)
       this.emitStatus('resuming')
       this.sendJson({
         op: 6,
@@ -442,7 +447,8 @@ export class QQService implements MessagingChannelService {
       this.lastSuccessfulIntentLevel >= 0 ? this.lastSuccessfulIntentLevel : this.intentLevelIndex
     const intentLevel = INTENT_LEVELS[Math.min(levelToUse, INTENT_LEVELS.length - 1)]
 
-    console.log(
+    logInfo(
+      'main',
       `[qq-bot:${this.pluginId}] Sending Identify with intents ${intentLevel.name} (${intentLevel.description})`
     )
     this.emitStatus('identifying', {

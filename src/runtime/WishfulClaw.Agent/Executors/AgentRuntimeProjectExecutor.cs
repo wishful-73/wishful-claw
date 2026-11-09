@@ -1,0 +1,694 @@
+// 500 行豁免（2026-10-28，行数以实际为准，AGENTS.md §大文件拆分 第 5 条第 3 类）：
+// 项目执行器是一条会话从收指令到写 project-status 的完整链路 —— 状态模板生成、
+// 快照读取、任务派发共用同一份 project / session 上下文与 DB 连接。拆出去要把
+// 这批 DB 句柄与 run 上下文搬成公开 API，排查「状态为什么不更新」反而更难。
+using System.Text.Json;
+using WishfulClaw.Agent.Results;
+using WishfulClaw.Contracts;
+using WishfulClaw.Core.Protocol;
+using WishfulClaw.Agent.Tools;
+using WishfulClaw.Infrastructure.Db;
+using WishfulClaw.Infrastructure.Storage;
+
+namespace WishfulClaw.Agent.Executors;
+
+/// <summary>
+/// Project management tools executor — list_projects / get_project_details / create_session /
+/// create_project / send_session_message / update_session_follow_up.
+/// The first four execute directly in Worker (DB operations); create_project additionally validates the
+/// landing site (see the ProjectCreation partial). send_session_message uses a reverse-request to the
+/// renderer, which dispatches it via normal sendMessage.
+/// </summary>
+public static partial class AgentRuntimeProjectExecutor
+{
+    private static readonly HashSet<string> ProjectToolNames = new(StringComparer.Ordinal)
+    {
+        "list_projects", "get_project_details", "create_session", "create_project",
+        "send_session_message", "update_session_follow_up",
+        "get_session_queue", "remove_session_queue_message", "clear_session_queue",
+        "resume_session_queue", "stop_session_run"
+    };
+
+    public static bool IsProjectTool(string toolName)
+    {
+        return ProjectToolNames.Contains(toolName);
+    }
+
+    public static async Task<string> ExecuteAsync(
+        AgentRuntimeNativeToolCall call,
+        JsonElement parameters,
+        IWorkerRequestContext context,
+        CancellationToken cancellationToken)
+    {
+        return call.Name switch
+        {
+            "list_projects" => await ListProjectsAsync(call.Input, parameters, cancellationToken),
+            "get_project_details" => await GetProjectDetailsAsync(call.Input, parameters, cancellationToken),
+            "create_session" => await CreateSessionAsync(call.Input, parameters, cancellationToken),
+            "create_project" => await CreateProjectAsync(call.Input, parameters, cancellationToken),
+            "send_session_message" => await SendSessionMessageAsync(call.Input, parameters, context, cancellationToken),
+            "update_session_follow_up" => await UpdateSessionFollowUpAsync(call.Input, parameters, context, cancellationToken),
+            "get_session_queue" => await GetSessionQueueAsync(call.Input, context, cancellationToken),
+            "remove_session_queue_message" => await RemoveSessionQueueMessageAsync(call.Input, context, cancellationToken),
+            "clear_session_queue" => await ClearSessionQueueAsync(call.Input, context, cancellationToken),
+            "resume_session_queue" => await ResumeSessionQueueAsync(call.Input, context, cancellationToken),
+            "stop_session_run" => await StopSessionRunAsync(call.Input, context, cancellationToken),
+            _ => EncodeError($"Project tool not registered: {call.Name}")
+        };
+    }
+
+    // ── list_projects ──
+
+    private static Task<string> ListProjectsAsync(
+        JsonElement input, JsonElement parameters, CancellationToken cancellationToken)
+    {
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var filter = JsonHelpers.GetString(input, "filter")?.Trim() ?? string.Empty;
+
+            DbClient.EnsureInitialized(parameters);
+            var db = DbClient.GetClient(parameters);
+
+            var entities = DbProjectStore.ListAll(db, filter.Length > 0 ? filter : null);
+
+            var rows = entities.Select(e =>
+            {
+                var sessionCount = DbSessionStore.CountByProject(db, e.Id);
+
+                var activeSessionCount = DbSessionStore.CountActiveByProject(
+                    db, e.Id, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - 3600000);
+
+                return new ProjectListRow(
+                    e.Id, e.Name, e.WorkingFolder, sessionCount, activeSessionCount);
+            }).ToList();
+
+            var result = JsonSerializer.Serialize(
+                new ProjectListResult(rows, rows.Count),
+                WorkerJsonHelper.GetTypeInfo<ProjectListResult>());
+
+            return Task.FromResult(result);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            return Task.FromResult(EncodeError($"Failed to list projects: {ex.Message}"));
+        }
+    }
+
+    // ── get_project_details ──
+
+    private static async Task<string> GetProjectDetailsAsync(
+        JsonElement input, JsonElement parameters, CancellationToken cancellationToken)
+    {
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var projectId = RequireString(input, "projectId");
+
+            DbClient.EnsureInitialized(parameters);
+            var db = DbClient.GetClient(parameters);
+
+            // Find project
+            var project = DbProjectStore.GetById(db, projectId);
+            if (project is null)
+            {
+                return EncodeError($"Project not found: {projectId}");
+            }
+
+            // Get sessions for this project (last 20)
+            var sessions = DbSessionStore.ListRecentByProject(db, projectId);
+
+            var sessionRows = sessions.Select(s => new SessionListRow(
+                s.Id, s.Title, s.Mode, s.MessageCount, s.CreatedAt, s.UpdatedAt)).ToList();
+
+            // Check project-status.md: exists, stale, and provide update template
+            string? taskStatus = null;
+            bool statusFileNeedsUpdate = false;
+            long statusFileAge = 0;
+
+            if (!string.IsNullOrEmpty(project.WorkingFolder))
+            {
+                var statusFilePath = Path.Combine(WishfulClawDataDir.ProjectRoot(project.WorkingFolder), "project-status.md");
+                if (File.Exists(statusFilePath))
+                {
+                    taskStatus = File.ReadAllText(statusFilePath);
+                    var lastWrite = File.GetLastWriteTimeUtc(statusFilePath);
+                    statusFileAge = (long)(DateTime.UtcNow - lastWrite).TotalMilliseconds;
+                    // Stale if older than 1 hour
+                    if (statusFileAge > 3600000)
+                    {
+                        statusFileNeedsUpdate = true;
+                    }
+                }
+                else
+                {
+                    statusFileNeedsUpdate = true;
+                }
+            }
+
+            // Fixed template message for Agent to send via send_session_message
+            var statusUpdateTemplate = statusFileNeedsUpdate
+                ? GenerateStatusUpdateTemplate(project.Name, project.WorkingFolder ?? "")
+                : "";
+
+            // Find the most recent active session (updated within last hour) for convenience
+            var activeSessionId = sessions
+                .Where(s => s.UpdatedAt > (DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - 3600000))
+                .OrderByDescending(s => s.UpdatedAt)
+                .Select(s => s.Id)
+                .FirstOrDefault() ?? sessions.FirstOrDefault()?.Id;
+
+            var result = JsonSerializer.Serialize(
+                new ProjectDetailResult(
+                    project.Id,
+                    project.Name,
+                    project.WorkingFolder,
+                    sessionRows,
+                    taskStatus ?? "",
+                    taskStatus is not null,
+                    statusFileNeedsUpdate,
+                    statusUpdateTemplate,
+                    activeSessionId ?? ""),
+                WorkerJsonHelper.GetTypeInfo<ProjectDetailResult>());
+
+            return result;
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            return EncodeError($"Failed to get project details: {ex.Message}");
+        }
+    }
+
+    // ── create_session ──
+
+    private static Task<string> CreateSessionAsync(
+        JsonElement input, JsonElement parameters, CancellationToken cancellationToken)
+    {
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var projectId = RequireString(input, "projectId");
+            var sessionName = JsonHelpers.GetString(input, "sessionName")?.Trim();
+            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+            DbClient.EnsureInitialized(parameters);
+            var db = DbClient.GetClient(parameters);
+
+            // Find project to get working folder
+            var project = DbProjectStore.GetById(db, projectId);
+            if (project is null)
+            {
+                return Task.FromResult(EncodeError($"Project not found: {projectId}"));
+            }
+
+            var sessionId = $"wc_{Guid.NewGuid():N}";
+            var title = sessionName ?? $"New Task - {DateTime.UtcNow:yyyy-MM-dd HH:mm}";
+
+            var entity = new SessionEntity
+            {
+                Id = sessionId,
+                Title = title,
+                Mode = "chat",
+                // 这条旁路直插 DB（不经渲染端 DbSessionTools.Create），scope 必须显式写死：
+                // projectId 是必填入参，这里建出的一定是项目会话（S-189）。
+                Scope = "project",
+                CreatedAt = now,
+                UpdatedAt = now,
+                MessageCount = 0,
+                ProjectId = projectId,
+                WorkingFolder = project.WorkingFolder,
+                SshConnectionId = project.SshConnectionId,
+                Pinned = 0
+            };
+
+            // S-115 / S-189 两条约束的说明随 SQL 搬进了 DbSessionStore.InsertProjectSession。
+            DbSessionStore.InsertProjectSession(db, entity);
+
+            var result = JsonSerializer.Serialize(
+                new CreateSessionResult(sessionId, title, projectId, now),
+                WorkerJsonHelper.GetTypeInfo<CreateSessionResult>());
+
+            return Task.FromResult(result);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            return Task.FromResult(EncodeError($"Failed to create session: {ex.Message}"));
+        }
+    }
+
+    // ── send_session_message ──
+
+    private static async Task<string> SendSessionMessageAsync(
+        JsonElement input, JsonElement parameters, IWorkerRequestContext context, CancellationToken cancellationToken)
+    {
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var sessionId = RequireString(input, "sessionId");
+            var content = RequireString(input, "content");
+            var workingFolder = JsonHelpers.GetString(input, "workingFolder")?.Trim();
+            var projectId = JsonHelpers.GetString(input, "projectId")?.Trim();
+            var sourceSessionId = JsonHelpers.GetString(parameters, "sessionId")?.Trim();
+            var hasFollowUp = input.TryGetProperty("followUp", out var followUp) &&
+                followUp.ValueKind == JsonValueKind.Object;
+            if (hasFollowUp && string.IsNullOrWhiteSpace(sourceSessionId))
+                throw new InvalidOperationException("A source session is required for follow-up tracking");
+
+            // S-279（v3-iter-5）：普通消息派活也要有记录。
+            //
+            // 以前 send_session_message 从不建 dispatch —— 全局会话「就地问一句 / 催一下」
+            // 发完就没了，没有任何可追踪的凭据，S-280 的自动回执也就无处落笔。
+            //
+            // ⚠️ 2026-10-31 订正（真机验收暴露）：初版**不往 wire 里塞协议说明**，理由是
+            // 「普通消息的 content 就是用户原话，塞英文回执协议会直接出现在目标会话里，
+            // 正是 S-278 刚拆开的那件事」。**这个前提是错的** —— S-278 拆开的恰恰是
+            // 「给模型看的 `content`」与「给人看的 `displayContent`」两个字段
+            // （`send_work_request` 用的就是这一套，见 AgentRuntimeGlobalTaskExecutor）。
+            // 不塞的后果：目标会话 agent 的上下文里没有 dispatchId，而
+            // `reply_global_dispatch` 的 dispatchId 是必填 ⇒ **结构上不可能显式回执**，
+            // 只能靠归档层代标 completed_implicit，全局会话永远拿不到对方说了什么。
+            // 所以这里照 `send_work_request` 的写法：`content` 追加一句轻量回执指引，
+            // `displayContent` 保持原话，聊天窗不受污染。
+            //
+            // sourceSessionId 必非空：send_session_message 属 ToolVisibilityScopes.GlobalSideOnly，
+            // 只有全局会话拿得到它，所以回执永远有地方可回。
+            string? messageDispatchId = null;
+            if (!string.IsNullOrWhiteSpace(sourceSessionId))
+            {
+                messageDispatchId = DispatchTableRouter.NewMessageDispatchId();
+                var createParams = WorkerJsonHelper.BuildJsonElement(w =>
+                {
+                    w.WriteStartObject();
+                    w.WriteString("id", messageDispatchId);
+                    w.WriteString("sessionId", sessionId);
+                    if (!string.IsNullOrEmpty(projectId))
+                        w.WriteString("projectId", projectId);
+                    w.WriteString("sourceSessionId", sourceSessionId);
+                    w.WriteString("instruction", content);
+                    w.WriteString("status", GlobalTaskDispatchStatusValues.Pending);
+                    w.WriteEndObject();
+                });
+                var createResponse = DbGlobalMessageDispatchTools.Create(createParams);
+                if (!TryReadDispatchMutation(createResponse, out var createError))
+                    return EncodeError(createError ?? "Failed to create message dispatch record");
+            }
+
+            // Build reverse request params
+            //
+            // S-279 订正：有 dispatch 时 wire 走「模型看 `content` / 人看 `displayContent`」，
+            // 与 send_work_request 同一条路径（S-278 的机制）。没有 dispatch（无源会话）
+            // 时两个字段都不加，保持老路径字节级一致。
+            var wireContent = messageDispatchId is null
+                ? content
+                : BuildSessionMessageWireText(messageDispatchId, content);
+
+            var reverseParams = WorkerJsonHelper.BuildJsonElement(w =>
+            {
+                w.WriteStartObject();
+                w.WriteString("sessionId", sessionId);
+                w.WriteString("content", wireContent);
+                w.WriteString("workingFolder", workingFolder ?? string.Empty);
+                w.WriteString("projectId", projectId ?? string.Empty);
+                if (messageDispatchId is not null)
+                {
+                    // 聊天窗显示原话；协议指引只在 wire 正文里，不进 displayContent。
+                    w.WriteString("displayContent", content);
+                    w.WritePropertyName("meta");
+                    w.WriteStartObject();
+                    w.WritePropertyName("globalDispatch");
+                    w.WriteStartObject();
+                    w.WriteString("dispatchId", messageDispatchId);
+                    w.WriteString("kind", GlobalTaskDispatchKindValues.Message);
+                    w.WriteEndObject();
+                    w.WriteEndObject();
+                }
+                if (hasFollowUp)
+                {
+                    w.WritePropertyName("followUp");
+                    w.WriteStartObject();
+                    w.WriteString("id", $"sf_{Guid.NewGuid():N}");
+                    w.WriteString("todoId", RequireString(followUp, "todoId"));
+                    w.WriteString("sourceSessionId", sourceSessionId);
+                    w.WriteString("targetSessionId", sessionId);
+                    if (!followUp.TryGetProperty("delayMs", out var delayMs) ||
+                        delayMs.ValueKind != JsonValueKind.Number || !delayMs.TryGetInt64(out var delay) || delay < 1000)
+                        throw new InvalidOperationException("Missing or invalid required field: followUp.delayMs (minimum 1000)");
+                    var followUpAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + delay;
+                    w.WriteNumber("followUpAt", followUpAt);
+                    w.WriteString("queryInstruction", RequireString(followUp, "queryInstruction"));
+                    if (followUp.TryGetProperty("notificationKey", out var notificationKey) &&
+                        notificationKey.ValueKind == JsonValueKind.String)
+                        w.WriteString("notificationKey", notificationKey.GetString());
+                    w.WriteEndObject();
+                }
+                w.WriteEndObject();
+            });
+
+            // Emit reverse request to renderer
+            var result = await AgentRuntimeReverseRequests.RequestAsync(
+                context, "project/send-session-message", reverseParams, cancellationToken);
+
+            // S-58：渲染端 handler 返回 { success, result?, error?, followUpId? }。以前这里直接
+            // ToString() 把整份 JSON 交给 agent —— 「已受理但排队」那条分支的回执里带着
+            // success:false，agent 读到原文就当成派发失败。按 success 决定输出走向：
+            // 失败才进错误通道，成功只把 result 文案交出去。
+            return FormatSendSessionMessageResult(result);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            return EncodeError($"Failed to send session message: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// S-279（v3-iter-5 收尾）：普通消息的 wire 正文 —— 原话 + 一句回执指引。
+    ///
+    /// 与 <c>send_work_request</c> 的 <c>[GLOBAL AGENT WORK REQUEST]</c> 同一思路，但刻意更短：
+    /// 普通消息多半是「问一句 / 催一下」，不需要整段执行规范。指引只解决一件事 ——
+    /// 让目标会话 agent 拿到 <c>dispatchId</c>，否则 <c>reply_global_dispatch</c> 的必填项凑不齐。
+    ///
+    /// 这段**只进 <c>content</c>**（模型看），聊天窗显示的是 <c>displayContent</c>（原话），
+    /// 所以不会污染界面（S-278 的机制）。
+    ///
+    /// <c>internal</c> 而非 <c>private</c>：<c>WishfulClaw.SessionMessageWireRegressionTests</c>
+    /// 要断言真字符串。这条链的缺陷（wire 里没 dispatch_id ⇒ 模型结构上回不了）不报错、
+    /// 不抛异常，只有真跑一遍才看得出来，所以必须有断言钉住。
+    /// </summary>
+    internal static string BuildSessionMessageWireText(string dispatchId, string content)
+    {
+        return $"[GLOBAL SESSION MESSAGE] dispatch_id={dispatchId}\n\n" +
+            $"{content}\n\n" +
+            "This message was sent by the global agent (the project manager), not by the user. " +
+            "If it asks you something or you need to report back, reply via the `use_capability` tool: " +
+            "action=\"call\", capability_id=\"builtin:reply_global_dispatch\", with " +
+            $"{{\"dispatchId\": \"{dispatchId}\", \"report\": \"<your answer>\", \"status\": \"completed\"}} " +
+            "inside `arguments`. Skip the reply if it was purely informational and needs no answer.";
+    }
+
+    private static async Task<string> UpdateSessionFollowUpAsync(
+        JsonElement input, JsonElement parameters, IWorkerRequestContext context, CancellationToken cancellationToken)
+    {
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var followUpId = RequireString(input, "followUpId");
+            var claimToken = RequireString(input, "claimToken");
+            var action = RequireString(input, "action");
+            var result = RequireString(input, "lastQueryResult");
+            var sourceSessionId = JsonHelpers.GetString(parameters, "sessionId")?.Trim();
+            if (string.IsNullOrWhiteSpace(sourceSessionId))
+                throw new InvalidOperationException("A source session is required to update a follow-up");
+            var status = action switch
+            {
+                "complete" => "completed",
+                "reschedule" => "waiting",
+                "fail" => "failed",
+                _ => throw new InvalidOperationException("action must be complete, reschedule, or fail")
+            };
+
+            long? followUpAt = null;
+            if (status == "waiting")
+            {
+                if (!input.TryGetProperty("delayMs", out var delayMsElement) ||
+                    delayMsElement.ValueKind != JsonValueKind.Number ||
+                    !delayMsElement.TryGetInt64(out var delay) || delay < 1000)
+                    throw new InvalidOperationException("delayMs is required for reschedule and must be at least 1000");
+                followUpAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + delay;
+            }
+
+            var reverseParams = WorkerJsonHelper.BuildJsonElement(writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteString("followUpId", followUpId);
+                writer.WriteString("claimToken", claimToken);
+                writer.WriteString("sourceSessionId", sourceSessionId);
+                writer.WriteString("action", action);
+                writer.WriteString("lastQueryResult", result);
+                if (followUpAt.HasValue) writer.WriteNumber("followUpAt", followUpAt.Value);
+                var error = JsonHelpers.GetString(input, "error")?.Trim();
+                if (!string.IsNullOrWhiteSpace(error)) writer.WriteString("error", error);
+                writer.WriteEndObject();
+            });
+
+            var response = await AgentRuntimeReverseRequests.RequestAsync(
+                context, "session-follow-up/update", reverseParams, cancellationToken);
+            return response.ValueKind == JsonValueKind.String
+                ? response.GetString() ?? string.Empty
+                : response.ToString();
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            return EncodeError($"Failed to update session follow-up: {ex.Message}");
+        }
+    }
+
+    // ── session queue（反向请求到渲染端，队列只存在于渲染端内存） ──
+
+    private static async Task<string> GetSessionQueueAsync(
+        JsonElement input, IWorkerRequestContext context, CancellationToken cancellationToken)
+    {
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var sessionId = RequireString(input, "sessionId");
+
+            var reverseParams = WorkerJsonHelper.BuildJsonElement(w =>
+            {
+                w.WriteStartObject();
+                w.WriteString("sessionId", sessionId);
+                w.WriteEndObject();
+            });
+
+            var result = await AgentRuntimeReverseRequests.RequestAsync(
+                context, "project/session-queue", reverseParams, cancellationToken);
+            return FormatToolReverseResult(result, "Session queue is empty.", "Failed to read session queue.");
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            return EncodeError($"Failed to read session queue: {ex.Message}");
+        }
+    }
+
+    private static async Task<string> RemoveSessionQueueMessageAsync(
+        JsonElement input, IWorkerRequestContext context, CancellationToken cancellationToken)
+    {
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var sessionId = RequireString(input, "sessionId");
+            var messageId = RequireString(input, "messageId");
+
+            var reverseParams = WorkerJsonHelper.BuildJsonElement(w =>
+            {
+                w.WriteStartObject();
+                w.WriteString("sessionId", sessionId);
+                w.WriteString("messageId", messageId);
+                w.WriteEndObject();
+            });
+
+            var result = await AgentRuntimeReverseRequests.RequestAsync(
+                context, "project/remove-session-queue-message", reverseParams, cancellationToken);
+            return FormatToolReverseResult(result, "Queued message removed.", "Failed to remove queued message.");
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            return EncodeError($"Failed to remove queued message: {ex.Message}");
+        }
+    }
+
+    private static async Task<string> ClearSessionQueueAsync(
+        JsonElement input, IWorkerRequestContext context, CancellationToken cancellationToken)
+    {
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var sessionId = RequireString(input, "sessionId");
+
+            var reverseParams = WorkerJsonHelper.BuildJsonElement(w =>
+            {
+                w.WriteStartObject();
+                w.WriteString("sessionId", sessionId);
+                w.WriteEndObject();
+            });
+
+            var result = await AgentRuntimeReverseRequests.RequestAsync(
+                context, "project/clear-session-queue", reverseParams, cancellationToken);
+            return FormatToolReverseResult(result, "Session queue cleared.", "Failed to clear session queue.");
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            return EncodeError($"Failed to clear session queue: {ex.Message}");
+        }
+    }
+
+    private static async Task<string> StopSessionRunAsync(
+        JsonElement input, IWorkerRequestContext context, CancellationToken cancellationToken)
+    {
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var sessionId = RequireString(input, "sessionId");
+
+            var reverseParams = WorkerJsonHelper.BuildJsonElement(w =>
+            {
+                w.WriteStartObject();
+                w.WriteString("sessionId", sessionId);
+                w.WriteEndObject();
+            });
+
+            var result = await AgentRuntimeReverseRequests.RequestAsync(
+                context, "project/stop-session-run", reverseParams, cancellationToken);
+            return FormatToolReverseResult(result, "Session run stopped.", "Failed to stop session run.");
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            return EncodeError($"Failed to stop session run: {ex.Message}");
+        }
+    }
+
+    private static async Task<string> ResumeSessionQueueAsync(
+        JsonElement input, IWorkerRequestContext context, CancellationToken cancellationToken)
+    {
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var sessionId = RequireString(input, "sessionId");
+
+            var reverseParams = WorkerJsonHelper.BuildJsonElement(w =>
+            {
+                w.WriteStartObject();
+                w.WriteString("sessionId", sessionId);
+                w.WriteEndObject();
+            });
+
+            var result = await AgentRuntimeReverseRequests.RequestAsync(
+                context, "project/resume-session-queue", reverseParams, cancellationToken);
+            return FormatToolReverseResult(result, "Session queue resumed.", "Failed to resume session queue.");
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            return EncodeError($"Failed to resume session queue: {ex.Message}");
+        }
+    }
+
+    // ── Helpers ──
+
+    private static string RequireString(JsonElement element, string name)
+    {
+        if (element.ValueKind != JsonValueKind.Object)
+            throw new InvalidOperationException($"Expected object, got {element.ValueKind}");
+
+        if (!element.TryGetProperty(name, out var prop) || prop.ValueKind != JsonValueKind.String)
+            throw new InvalidOperationException($"Missing or invalid required field: {name}");
+
+        var value = prop.GetString()?.Trim();
+        if (string.IsNullOrEmpty(value))
+            throw new InvalidOperationException($"Required field '{name}' is empty");
+
+        return value;
+    }
+
+    /// <summary>
+    /// 把渲染端 send-session-message handler 的返回对象转成工具输出。
+    /// 返回对象形如 { success, result?, error?, followUpId? }：只有 success 为 false
+    /// 才走错误通道（EncodeError），成功时只交出 result 文案，避免 agent 读到整份 JSON。
+    /// </summary>
+    internal static string FormatSendSessionMessageResult(JsonElement result)
+    {
+        return FormatToolReverseResult(result, "Message sent successfully.", "Failed to send session message.");
+    }
+
+    /// <summary>
+    /// 渲染端反向请求 handler 的统一返回形状 `{ success, result?, error? }` → 工具输出。
+    /// 只有 success 为 false 才走错误通道（EncodeError），成功时只交出 result 文案，
+    /// 避免 agent 读到整份 JSON。
+    /// </summary>
+    private static string FormatToolReverseResult(
+        JsonElement result, string successFallback, string errorFallback)
+    {
+        if (result.ValueKind != JsonValueKind.Object)
+        {
+            var text = result.ValueKind == JsonValueKind.String
+                ? result.GetString() ?? string.Empty
+                : result.ToString();
+            return string.IsNullOrEmpty(text) ? successFallback : text;
+        }
+
+        var succeeded = !result.TryGetProperty("success", out var success) ||
+            success.ValueKind != JsonValueKind.False;
+
+        if (!succeeded)
+        {
+            var error = JsonHelpers.GetString(result, "error")?.Trim();
+            return EncodeError(string.IsNullOrEmpty(error) ? errorFallback : error);
+        }
+
+        var message = JsonHelpers.GetString(result, "result")?.Trim();
+        return string.IsNullOrEmpty(message) ? successFallback : message;
+    }
+
+    /// <summary>
+    /// S-279：校验 Db*DispatchTools 的 WorkerResponse —— 外层 <c>error</c> 或内层
+    /// <c>{ success: false, error }</c> 都算失败。建派活记录失败必须报错，不许静默
+    /// 发消息（否则 S-280 的自动回执会去改一条不存在的记录）。
+    /// </summary>
+    private static bool TryReadDispatchMutation(WorkerResponse response, out string? error)
+    {
+        using var document = JsonDocument.Parse(response.ToJsonBytes(null));
+        var root = document.RootElement;
+        if (root.TryGetProperty("error", out var envelopeError))
+        {
+            error = envelopeError.GetString();
+            return false;
+        }
+        var result = root.GetProperty("result");
+        if (result.ValueKind == JsonValueKind.Object
+            && result.TryGetProperty("success", out var success)
+            && !success.GetBoolean())
+        {
+            error = result.TryGetProperty("error", out var resultError) ? resultError.GetString() : "operation failed";
+            return false;
+        }
+        error = null;
+        return true;
+    }
+
+    private static string EncodeError(string message)
+    {
+        var buffer = new System.Buffers.ArrayBufferWriter<byte>();
+        using (var writer = new System.Text.Json.Utf8JsonWriter(buffer))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("error", message);
+            writer.WriteEndObject();
+        }
+        return System.Text.Encoding.UTF8.GetString(buffer.WrittenSpan);
+    }
+    /// <summary>
+    /// Generate a fixed template message for the Agent to send to a project session,
+    /// instructing it to organize and write a clean project-status.md summary.
+    /// </summary>
+    private static string GenerateStatusUpdateTemplate(string projectName, string workingFolder)
+    {
+        return $"Please organize the current task status for project **{projectName}** " +
+            $"and write a clean summary to `{WishfulClawDataDir.ProjectDirName}/project-status.md` in the working directory.\n\n" +
+            "The status file should include:\n" +
+            "- **Active tasks**: what's currently being worked on\n" +
+            "- **Recent changes**: what was done recently\n" +
+            "- **Next steps**: what's planned next\n" +
+            "- **Blockers**: any issues that need attention\n\n" +
+            "Please review the current conversation history, plans, and goals to produce " +
+            "an accurate and up-to-date summary. Write the file in Markdown format " +
+            $"at `{workingFolder}/{WishfulClawDataDir.ProjectDirName}/project-status.md`.";
+    }
+}

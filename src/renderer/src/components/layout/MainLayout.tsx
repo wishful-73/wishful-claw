@@ -7,7 +7,6 @@ import { dbLoadAll } from '@renderer/stores/chat-store/db-helpers'
 import { WorkspaceSidebar } from './WorkspaceSidebar'
 import { TitleBar } from './TitleBar'
 import { RightPanel } from './RightPanel'
-import { RuntimeStatusPanel } from './RuntimeStatusPanel'
 import { CommandPalette } from './CommandPalette'
 import { LocalImagePreviewDialog } from '@renderer/components/chat/LocalImagePreviewDialog'
 import { SessionConversationPane } from './SessionConversationPane'
@@ -75,7 +74,6 @@ function ContentArea(): React.JSX.Element {
 
 export function MainLayout(): React.JSX.Element {
 
-  const runtimeStatusPanelOpen = useUIStore((s) => s.runtimeStatusPanelOpen)
   const ensureDefaultProject = useChatStore((s) => s.ensureDefaultProject)
 
   // 视口自己变窄时也要收侧（S-131 路径二）。
@@ -202,9 +200,6 @@ export function MainLayout(): React.JSX.Element {
             <RightPanel />
           </div>
         </div>
-
-        {/* Runtime status panel (bottom or floating) */}
-        {runtimeStatusPanelOpen && <RuntimeStatusPanel />}
 
         {/* Command palette overlay */}
         <CommandPalette />

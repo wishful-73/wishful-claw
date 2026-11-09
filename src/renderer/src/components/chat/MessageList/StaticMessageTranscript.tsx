@@ -62,7 +62,7 @@ export function StaticMessageTranscript({
     completedSubAgents,
     subAgentHistory,
     hasOrchestrationData: hasAgentOrchestrationData
-  } = useAgentStore((s) => selectSessionScopedAgentState(s, sessionId, { mode: 'coarse' }))
+  } = useAgentStore((s) => selectSessionScopedAgentState(s, sessionId))
   const {
     activeTeam,
     teamHistory,

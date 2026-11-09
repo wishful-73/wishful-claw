@@ -1,0 +1,494 @@
+/*
+ * Ported from OpenCowork.
+ * Original: Copyright 2026 AIDotNet
+ * Licensed under the Apache License, Version 2.0 (the "License").
+ * Modified by the Wishful 心相 team for Wishful Claw.
+ */
+
+using System.Text.Encodings.Web;
+using System.Text.Json;
+using WishfulClaw.Agent.Desktop;
+using WishfulClaw.Contracts;
+using WishfulClaw.Core.Protocol;
+
+namespace WishfulClaw.Agent.Executors;
+
+/// <summary>
+/// Desktop control tool executor that routes to the main process via reverse-request.
+/// Supports screenshot, click, type, scroll, and wait operations.
+/// Ported from WishfulClaw AgentRuntimeDesktopExecutor.
+/// </summary>
+public static partial class AgentRuntimeDesktopExecutor
+{
+    /// <summary>
+    /// Tools routed through this executor. All of them reverse-request into the main
+    /// process, which is the only reason `CaptureAppWindow` lives here — its subject is
+    /// the app's own window, not the desktop, but it shares the same transport.
+    /// </summary>
+    private static readonly HashSet<string> DesktopToolNames = new(StringComparer.Ordinal)
+    {
+        "DesktopScreenshot",
+        "DesktopListWindows",
+        "DesktopQueryElements",
+        "DesktopClick",
+        "DesktopType",
+        "DesktopScroll",
+        "DesktopWait",
+        "CaptureAppWindow"
+    };
+
+    private static readonly HashSet<string> AllowedButtons = new(StringComparer.Ordinal)
+    {
+        "left", "right", "middle"
+    };
+
+    private static readonly HashSet<string> AllowedClickActions = new(StringComparer.Ordinal)
+    {
+        "click", "double_click", "down", "up"
+    };
+
+    private static readonly HashSet<string> AllowedModifiers = new(StringComparer.Ordinal)
+    {
+        "Control", "Meta", "Alt", "Shift"
+    };
+
+    private static readonly HashSet<string> AllowedNamedKeys = new(StringComparer.Ordinal)
+    {
+        "Enter", "Tab", "Escape", "Backspace", "Delete",
+        "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+        "Home", "End", "PageUp", "PageDown", "Space"
+    };
+
+    private static readonly JsonWriterOptions WriterOptions = new()
+    {
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
+
+    public static bool IsDesktopTool(string toolName)
+    {
+        return DesktopToolNames.Contains(toolName);
+    }
+
+    public static async Task<RendererToolResult> ExecuteAsync(
+        AgentRuntimeNativeToolCall call,
+        IWorkerRequestContext context,
+        string? workingFolder,
+        CancellationToken cancellationToken)
+    {
+        return call.Name switch
+        {
+            "DesktopScreenshot" => await ExecuteScreenshotAsync(call.Input, context, workingFolder, cancellationToken),
+            "DesktopListWindows" => ExecuteListWindows(call.Input),
+            "DesktopQueryElements" => await ExecuteQueryElementsAsync(call.Input, context, cancellationToken),
+            "DesktopClick" => await ExecuteClickAsync(call.Input, context, cancellationToken),
+            "DesktopType" => await ExecuteTypeAsync(call.Input, context, cancellationToken),
+            "DesktopScroll" => await ExecuteScrollAsync(call.Input, context, cancellationToken),
+            "DesktopWait" => await ExecuteWaitAsync(call.Input, cancellationToken),
+            "CaptureAppWindow" => await ExecuteAppWindowCaptureAsync(call.Input, context, workingFolder, cancellationToken),
+            _ => StringResult(EncodeError($"Unsupported desktop tool: {call.Name}"), true)
+        };
+    }
+
+    /// <summary>
+    /// `DesktopQueryElements` —— 问自家窗口「这个按钮在哪」（S-273 段 A）。
+    ///
+    /// **只覆盖本应用自己的窗口**：主进程靠 `webContents.debugger` 挂 CDP 读 Chromium 的
+    /// 可访问性树，元素矩形由浏览器给出，模型不用再看图数像素。第三方应用没有
+    /// `webContents`，这条路走不通 —— 主进程直接报错并把模型引回 `DesktopListWindows`
+    /// + 相对坐标，这里原样透传，不猜也不降级成「假成功」。
+    ///
+    /// **报文形状由主进程定**（`elements` / `candidates` / `frameNote`），这里整段转发而不是
+    /// 重新编码 —— 两处各拼一遍必然分叉，S-276 的四处判据就是这么走散的。
+    /// </summary>
+    private static async Task<RendererToolResult> ExecuteQueryElementsAsync(
+        JsonElement input,
+        IWorkerRequestContext context,
+        CancellationToken cancellationToken)
+    {
+        var expect = JsonHelpers.GetString(input, "expect")?.Trim();
+        var nameFilter = JsonHelpers.GetString(input, "nameFilter")?.Trim();
+        var roles = JsonHelpers.GetStringArray(input, "roles");
+        var maxDepth = Math.Clamp(JsonHelpers.GetInt(input, "maxDepth", 8), 1, 32);
+        var maxElements = Math.Clamp(JsonHelpers.GetInt(input, "maxElements", 120), 1, 500);
+
+        var response = await InvokeMainAsync(
+            context, "desktop:query:elements",
+            CreateJsonObject(writer =>
+            {
+                if (!string.IsNullOrEmpty(expect)) writer.WriteString("expect", expect);
+                if (!string.IsNullOrEmpty(nameFilter)) writer.WriteString("nameFilter", nameFilter);
+                if (roles.Length > 0)
+                {
+                    writer.WritePropertyName("roles");
+                    writer.WriteStartArray();
+                    foreach (var role in roles)
+                    {
+                        writer.WriteStringValue(role);
+                    }
+                    writer.WriteEndArray();
+                }
+                writer.WriteNumber("maxDepth", maxDepth);
+                writer.WriteNumber("maxElements", maxElements);
+            }), cancellationToken);
+
+        if (response.ValueKind != JsonValueKind.Object)
+        {
+            return StringResult(
+                EncodeError("The main process returned no element tree for the app window."), true);
+        }
+
+        if (!JsonHelpers.GetBool(response, "success", false))
+        {
+            return StringResult(
+                EncodeError(
+                    JsonHelpers.GetString(response, "error") ??
+                    "Failed to query the app window's elements."),
+                true);
+        }
+
+        return StringResult(response.GetRawText());
+    }
+
+    /// <summary>
+    /// Screenshot the whole desktop and optionally write it to a caller-chosen path.
+    ///
+    /// S-268：`path` 以前是被**静默忽略**的 —— 工具照报成功，文件却没落到模型说的位置，
+    /// 模型下一轮去 Read 就扑空。比直接报错更糟：报错它会换招，假成功它继续往下走。
+    /// 路径解析规则与 <see cref="ExecuteAppWindowCaptureAsync"/> 完全一致（相对路径按会话
+    /// workingFolder 解析，因为主进程 cwd 是程序目录），两处必须同形状，别再分叉。
+    /// </summary>
+    private static async Task<RendererToolResult> ExecuteScreenshotAsync(
+        JsonElement input,
+        IWorkerRequestContext context,
+        string? workingFolder,
+        CancellationToken cancellationToken)
+    {
+        var requestedPath = JsonHelpers.GetString(input, "path")?.Trim();
+        var delayMs = Math.Clamp(JsonHelpers.GetInt(input, "delayMs", 0), 0, 5_000);
+        if (delayMs > 0)
+        {
+            await Task.Delay(delayMs, cancellationToken);
+        }
+
+        // S-272 第二段 · D：`window` 只截那一个窗口。标题在 worker 侧解析 —— 枚举别的进程的
+        // 窗口是 Win32 的活，主进程干不了。
+        var windowKeyword = JsonHelpers.GetString(input, "window")?.Trim();
+        DesktopWindowEntry? windowMatch = null;
+        if (!string.IsNullOrEmpty(windowKeyword))
+        {
+            if (!TryResolveWindowTarget(windowKeyword, out windowMatch, out var windowError))
+            {
+                return windowError ?? StringResult(
+                    EncodeError($"No visible window matches \"{windowKeyword}\"."), true);
+            }
+        }
+
+        var targetPath = ResolveCaptureTargetPath(requestedPath, workingFolder);
+        var grid = JsonHelpers.GetBool(input, "grid", false);
+
+        var response = await InvokeMainAsync(
+            context, "desktop:screenshot:capture",
+            CreateJsonObject(writer =>
+            {
+                if (targetPath is not null) writer.WriteString("targetPath", targetPath);
+                if (grid) writer.WriteBoolean("grid", true);
+                if (windowMatch is not null)
+                {
+                    writer.WriteString("windowTitle", windowMatch.Title);
+                    writer.WriteStartObject("windowRect");
+                    writer.WriteNumber("x", windowMatch.X);
+                    writer.WriteNumber("y", windowMatch.Y);
+                    writer.WriteNumber("width", windowMatch.Width);
+                    writer.WriteNumber("height", windowMatch.Height);
+                    writer.WriteEndObject();
+                }
+            }), cancellationToken);
+        var data = JsonHelpers.GetString(response, "data");
+        if (!JsonHelpers.GetBool(response, "success", false) || string.IsNullOrEmpty(data))
+        {
+            return StringResult(
+                EncodeError(JsonHelpers.GetString(response, "error") ?? "Failed to capture desktop screenshot."),
+                true);
+        }
+
+        return new RendererToolResult(CreateScreenshotContent(response, data), false, null);
+    }
+
+    /// <summary>
+    /// Screenshot the app's own window and optionally write it to disk.
+    ///
+    /// The path is resolved here rather than in the main process: the main process's
+    /// cwd is the application directory, so a relative `docs/images/foo.png` handed to
+    /// it would land somewhere entirely unrelated to the user's working folder.
+    /// </summary>
+    private static async Task<RendererToolResult> ExecuteAppWindowCaptureAsync(
+        JsonElement input,
+        IWorkerRequestContext context,
+        string? workingFolder,
+        CancellationToken cancellationToken)
+    {
+        var requestedPath = JsonHelpers.GetString(input, "path")?.Trim();
+        var delayMs = Math.Clamp(JsonHelpers.GetInt(input, "delayMs", 0), 0, 5_000);
+
+        var targetPath = ResolveCaptureTargetPath(requestedPath, workingFolder);
+
+        var response = await InvokeMainAsync(
+            context, "window:capture-self",
+            CreateJsonObject(writer =>
+            {
+                if (delayMs > 0) writer.WriteNumber("delayMs", delayMs);
+                if (targetPath is not null) writer.WriteString("targetPath", targetPath);
+            }), cancellationToken);
+
+        var data = JsonHelpers.GetString(response, "data");
+        if (!JsonHelpers.GetBool(response, "success", false) || string.IsNullOrEmpty(data))
+        {
+            return StringResult(
+                EncodeError(JsonHelpers.GetString(response, "error") ?? "Failed to capture the app window."),
+                true);
+        }
+
+        return new RendererToolResult(CreateAppWindowCaptureContent(response, data), false, null);
+    }
+
+    /// <summary>
+    /// 把模型给的 `path` 解析成绝对路径 —— `DesktopScreenshot` 与 `CaptureAppWindow` 共用。
+    ///
+    /// **为什么必须在 worker 侧解析**：主进程的 cwd 是程序安装目录，把相对路径原样递下去，
+    /// 文件会落在用户完全想不到的地方。
+    ///
+    /// 返回 `null` 表示「模型没指定位置」，调用方就不传 `targetPath`，主进程退回默认数据目录。
+    /// 空串与纯空白一律当没传 —— 否则 `<工作目录>` 本身会被当成目标文件路径。
+    /// </summary>
+    internal static string? ResolveCaptureTargetPath(string? requestedPath, string? workingFolder)
+    {
+        if (string.IsNullOrWhiteSpace(requestedPath))
+        {
+            return null;
+        }
+
+        var baseDir = string.IsNullOrWhiteSpace(workingFolder)
+            ? Environment.CurrentDirectory
+            : workingFolder;
+
+        return Path.IsPathRooted(requestedPath)
+            ? Path.GetFullPath(requestedPath)
+            : Path.GetFullPath(Path.Combine(baseDir, requestedPath));
+    }
+
+    private static async Task<RendererToolResult> ExecuteClickAsync(
+        JsonElement input,
+        IWorkerRequestContext context,
+        CancellationToken cancellationToken)
+    {
+        var x = JsonHelpers.GetDoubleNullable(input, "x");
+        var y = JsonHelpers.GetDoubleNullable(input, "y");
+        var button = JsonHelpers.GetString(input, "button") ?? "left";
+        var action = JsonHelpers.GetString(input, "action") ?? "click";
+
+        if (!x.HasValue || !y.HasValue)
+        {
+            return StringResult(EncodeError("DesktopClick requires numeric x and y coordinates."), true);
+        }
+        if (!AllowedButtons.Contains(button))
+        {
+            return StringResult(EncodeError($"Unsupported button: {button}."), true);
+        }
+        if (!AllowedClickActions.Contains(action))
+        {
+            return StringResult(EncodeError($"Unsupported action: {action}."), true);
+        }
+
+        var response = await InvokeMainAsync(
+            context, "desktop:input:click",
+            CreateJsonObject(writer =>
+            {
+                writer.WriteNumber("x", x.Value);
+                writer.WriteNumber("y", y.Value);
+                writer.WriteString("button", button);
+                writer.WriteString("action", action);
+            }), cancellationToken);
+
+        if (!JsonHelpers.GetBool(response, "success", false))
+        {
+            return StringResult(
+                EncodeError(JsonHelpers.GetString(response, "error") ?? "Desktop click failed."), true);
+        }
+
+        var resultX = JsonHelpers.GetDoubleNullable(response, "x") ?? x.Value;
+        var resultY = JsonHelpers.GetDoubleNullable(response, "y") ?? y.Value;
+        var resultButton = JsonHelpers.GetString(response, "button") ?? button;
+        var resultAction = JsonHelpers.GetString(response, "action") ?? action;
+        // S-272 第二段：0~1 的相对坐标由主进程换算，这里只把「换算后的绝对点」如实回报 ——
+        // 模型需要知道它说的「图里 62% 处」最后落在屏幕哪个像素。
+        var relative = JsonHelpers.GetBool(response, "relative", false);
+        return StringResult(EncodeJsonObject(writer =>
+        {
+            writer.WriteBoolean("success", true);
+            writer.WriteNumber("x", resultX);
+            writer.WriteNumber("y", resultY);
+            writer.WriteString("button", resultButton);
+            writer.WriteString("action", resultAction);
+            writer.WriteBoolean("relative", relative);
+            writer.WriteString("message",
+                relative
+                    ? $"Desktop {resultAction} executed at screen ({Math.Round(resultX)}, {Math.Round(resultY)}) with {resultButton} button, resolved from the relative position ({x.Value}, {y.Value}) in the last screenshot."
+                    : $"Desktop {resultAction} executed at ({resultX}, {resultY}) with {resultButton} button.");
+        }));
+    }
+
+    private static async Task<RendererToolResult> ExecuteTypeAsync(
+        JsonElement input,
+        IWorkerRequestContext context,
+        CancellationToken cancellationToken)
+    {
+        var text = JsonHelpers.GetString(input, "text");
+        var key = JsonHelpers.GetString(input, "key");
+        var hotkey = ReadStringArray(input, "hotkey");
+        var providedCount = (!string.IsNullOrEmpty(text) ? 1 : 0) +
+            (!string.IsNullOrEmpty(key) ? 1 : 0) +
+            (hotkey.Count > 0 ? 1 : 0);
+
+        if (providedCount != 1)
+        {
+            return StringResult(EncodeError("DesktopType requires exactly one of: text, key, or hotkey."), true);
+        }
+        if (!string.IsNullOrEmpty(key) && !AllowedNamedKeys.Contains(key) && !IsSupportedSingleKey(key))
+        {
+            return StringResult(EncodeError($"Unsupported key: {key}."), true);
+        }
+        if (hotkey.Count > 0)
+        {
+            if (hotkey.Count < 2)
+            {
+                return StringResult(EncodeError("DesktopType hotkey must include at least one modifier and one key."), true);
+            }
+            var modifiers = hotkey.Take(hotkey.Count - 1).ToArray();
+            if (modifiers.Any(item => !AllowedModifiers.Contains(item)))
+            {
+                return StringResult(EncodeError($"DesktopType hotkey modifiers must be one of: {string.Join(", ", AllowedModifiers)}."), true);
+            }
+            if (string.IsNullOrEmpty(hotkey[^1]))
+            {
+                return StringResult(EncodeError("DesktopType hotkey requires a trailing key."), true);
+            }
+        }
+
+        var response = await InvokeMainAsync(
+            context, "desktop:input:type",
+            CreateJsonObject(writer =>
+            {
+                WriteNullableString(writer, "text", text);
+                WriteNullableString(writer, "key", key);
+                writer.WritePropertyName("hotkey");
+                if (hotkey.Count == 0) { writer.WriteNullValue(); }
+                else
+                {
+                    writer.WriteStartArray();
+                    foreach (var item in hotkey) { writer.WriteStringValue(item); }
+                    writer.WriteEndArray();
+                }
+            }), cancellationToken);
+
+        if (!JsonHelpers.GetBool(response, "success", false))
+        {
+            return StringResult(EncodeError(JsonHelpers.GetString(response, "error") ?? "Desktop typing failed."), true);
+        }
+
+        var mode = JsonHelpers.GetString(response, "mode") ?? string.Empty;
+        var textLength = JsonHelpers.GetInt(response, "textLength", text?.Length ?? 0);
+        var resultKey = JsonHelpers.GetString(response, "key") ?? key;
+        var resultHotkey = ReadStringArray(response, "hotkey");
+        return StringResult(EncodeJsonObject(writer =>
+        {
+            writer.WriteBoolean("success", true);
+            writer.WriteString("mode", mode);
+            writer.WriteNumber("textLength", textLength);
+            WriteNullableString(writer, "key", resultKey);
+            writer.WritePropertyName("hotkey");
+            WriteStringArrayOrNull(writer, resultHotkey.Count > 0 ? resultHotkey : hotkey);
+            writer.WriteString("message", BuildTypeMessage(mode, textLength, resultKey, resultHotkey, hotkey));
+        }));
+    }
+
+    private static async Task<RendererToolResult> ExecuteScrollAsync(
+        JsonElement input,
+        IWorkerRequestContext context,
+        CancellationToken cancellationToken)
+    {
+        var x = JsonHelpers.GetDoubleNullable(input, "x");
+        var y = JsonHelpers.GetDoubleNullable(input, "y");
+        var scrollX = JsonHelpers.GetDoubleNullable(input, "scrollX") ?? 0;
+        var scrollY = JsonHelpers.GetDoubleNullable(input, "scrollY") ?? 0;
+
+        if ((x.HasValue && !y.HasValue) || (!x.HasValue && y.HasValue))
+        {
+            return StringResult(EncodeError("DesktopScroll requires both x and y when specifying a scroll anchor."), true);
+        }
+
+        var response = await InvokeMainAsync(
+            context, "desktop:input:scroll",
+            CreateJsonObject(writer =>
+            {
+                if (x.HasValue) { writer.WriteNumber("x", x.Value); } else { writer.WriteNull("x"); }
+                if (y.HasValue) { writer.WriteNumber("y", y.Value); } else { writer.WriteNull("y"); }
+                writer.WriteNumber("scrollX", scrollX);
+                writer.WriteNumber("scrollY", scrollY);
+            }), cancellationToken);
+
+        if (!JsonHelpers.GetBool(response, "success", false))
+        {
+            return StringResult(EncodeError(JsonHelpers.GetString(response, "error") ?? "Desktop scroll failed."), true);
+        }
+
+        var resultX = JsonHelpers.GetDoubleNullable(response, "x");
+        var resultY = JsonHelpers.GetDoubleNullable(response, "y");
+        var resultScrollX = JsonHelpers.GetDoubleNullable(response, "scrollX") ?? scrollX;
+        var resultScrollY = JsonHelpers.GetDoubleNullable(response, "scrollY") ?? scrollY;
+        return StringResult(EncodeJsonObject(writer =>
+        {
+            writer.WriteBoolean("success", true);
+            WriteOptionalNumber(writer, "x", resultX);
+            WriteOptionalNumber(writer, "y", resultY);
+            writer.WriteNumber("scrollX", resultScrollX);
+            writer.WriteNumber("scrollY", resultScrollY);
+            writer.WriteString("message",
+                resultX.HasValue && resultY.HasValue
+                    ? $"Desktop scroll executed at ({resultX}, {resultY}) with delta ({resultScrollX}, {resultScrollY})."
+                    : $"Desktop scroll executed with delta ({resultScrollX}, {resultScrollY}).");
+        }));
+    }
+
+    private static async Task<RendererToolResult> ExecuteWaitAsync(
+        JsonElement input, CancellationToken cancellationToken)
+    {
+        var delayMs = JsonHelpers.GetDoubleNullable(input, "delayMs") ?? 2_000;
+        if (double.IsNaN(delayMs) || double.IsInfinity(delayMs) || delayMs < 0)
+        {
+            return StringResult(EncodeError("DesktopWait requires a non-negative numeric delayMs."), true);
+        }
+
+        var boundedDelayMs = (int)Math.Min(delayMs, 10_000);
+        if (boundedDelayMs > 0)
+        {
+            await Task.Delay(boundedDelayMs, cancellationToken);
+        }
+
+        return StringResult(EncodeJsonObject(writer =>
+        {
+            writer.WriteBoolean("success", true);
+            writer.WriteNumber("delayMs", boundedDelayMs);
+            writer.WriteString("message", $"Desktop wait completed after {boundedDelayMs}ms.");
+        }));
+    }
+
+    // ── Helpers ──
+
+    private static async Task<JsonElement> InvokeMainAsync(
+        IWorkerRequestContext context, string method,
+        JsonElement request, CancellationToken cancellationToken)
+    {
+        return await AgentRuntimeReverseRequests.RequestAsync(context, method, request, cancellationToken);
+    }
+
+}

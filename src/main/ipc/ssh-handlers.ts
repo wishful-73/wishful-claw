@@ -14,6 +14,7 @@ import {
 import { execSshCommand, type SshExecResult } from '../ssh/ssh-exec'
 import { testSshConnection } from '../ssh/ssh-test'
 import { closeConnection, closeAllSshConnections } from '../ssh/connection-pool'
+import { logInfo } from '../lib/logger'
 
 // SSH IPC handlers: connection CRUD + exec + group stubs + misc.
 
@@ -24,7 +25,7 @@ async function ensureSshInitialized(): Promise<void> {
   sshInitialized = true
   try {
     await initializeSshRepository()
-    console.log('[SSH Handlers] Repository initialized')
+    logInfo('ipc', '[SSH Handlers] Repository initialized')
   } catch (err) {
     console.warn('[SSH Handlers] Repository initialization failed:', err)
     sshInitialized = false

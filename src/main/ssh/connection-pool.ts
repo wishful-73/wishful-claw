@@ -1,6 +1,7 @@
 import { Client, type SFTPWrapper } from 'ssh2'
 import { getConnectionWithSecrets, updateConnection } from './repository'
 import { buildConnectConfig } from './auth'
+import { logInfo } from '../lib/logger'
 
 // Connection pool: one authenticated ssh2 Client per saved connection.
 // Handles keepalive-detected drops with exponential-backoff reconnect.
@@ -193,7 +194,7 @@ function scheduleReconnect(handle: ConnectionHandle): void {
 
   const delay = RECONNECT_DELAYS_MS[Math.min(handle.reconnectAttempts, RECONNECT_DELAYS_MS.length - 1)]
   handle.reconnectAttempts += 1
-  console.log(`[SSH] Scheduling reconnect for ${handle.connectionId} in ${delay}ms (attempt ${handle.reconnectAttempts})`)
+  logInfo('main', `[SSH] Scheduling reconnect for ${handle.connectionId} in ${delay}ms (attempt ${handle.reconnectAttempts})`)
 
   handle.reconnectTimer = setTimeout(() => {
     handle.reconnectTimer = null

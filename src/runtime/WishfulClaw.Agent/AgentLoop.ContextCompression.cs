@@ -1,7 +1,10 @@
 using System.Text.Json;
+using WishfulClaw.Agent.Compression;
+using WishfulClaw.Agent.Sessions;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Db;
+using WishfulClaw.Agent.Executors;
 
 namespace WishfulClaw.Agent;
 

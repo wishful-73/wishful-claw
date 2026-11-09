@@ -201,7 +201,7 @@ curl -s https://wishful-claw.work/downloads/latest.yml | Select-String 'version:
 > `latest.yml` + `release-notes-{版本}.md`（缺件直接报错），一次上传、远端解包归位、逐件 sha512 校验，
 > 并**清旧件**（`.exe` 只留当前版、`.blockmap` 保留最近 `CFG.blockmapKeepCount` 版 —— 2026-10-08 修订，见上）；
 > 人手写的 `latest.json` 已退役，清单唯一真源就是 electron-builder 的 `latest.yml`。
-> 变更明细见 [iter-v2-36/S-129.md](../plans/iter-v2-36/requirements/S-129.md) §五。
+> 变更明细见 [iter-v2-36/S-129.md](plans/iter-v2-36/requirements/S-129.md) §五。
 
 > ⚠️ **`deploy.mjs` 不在版本库** —— `.gitignore:57` 的 `scripts/*`（白名单制）刻意排除它（内含服务器
 > 地址与部署密钥路径）。换机器时手动拷过去，密钥生成见知识库《官网部署》。
@@ -291,7 +291,7 @@ node scripts/site-stats.mjs --days 30
 node scripts/site-stats.mjs --json     # 原样打印 summary.json
 ```
 
-**前端展示**：`website/src/lib/site-stats.ts` 拉 `./stats.json`，下载页注脚显示「已下载 N 次」、全站 footer 显示「访问 N 次」。**不足 100 次不显示**（数字从 0 起算，不造假起点）；取不到 JSON 时整段不显示、不报错。
+**前端展示**：`site/website/src/lib/site-stats.ts` 拉 `./stats.json`，下载页注脚显示「已下载 N 次」、全站 footer 显示「访问 N 次」。**不足 100 次不显示**（数字从 0 起算，不造假起点）；取不到 JSON 时整段不显示、不报错。
 
 **已知偏差**：数的是「**点击**」（进了中转页），不是「加速站真实传输完成」—— 第三方不回报，这是能拿到的最接近分发量的数。
 

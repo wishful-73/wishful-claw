@@ -159,7 +159,6 @@ function extractOptions(argumentsJson: string): OptimizationOption[] {
         focus: typeof option.focus === 'string' && option.focus.trim() ? option.focus : '',
         content: option.content as string
       }))
-    console.log(`[Optimizer] extracted ${options.length}/${parsed.options.length} options from tool args`)
     return options
   } catch (error) {
     console.warn('Optimizer failed to parse tool arguments:', error)
@@ -201,18 +200,6 @@ ${languageInstruction}`
       tools: OPTIMIZER_TOOLS,
       signal
     })
-
-    // JSON.stringify: the log forwarder flattens object args to "[object Object]".
-    const summary = {
-      ok: result.ok,
-      hasText: Boolean(result.text),
-      textLength: result.text?.length ?? 0,
-      toolCallCount: result.toolCalls?.length ?? 0,
-      toolNames: (result.toolCalls ?? []).map((call) => call.name),
-      keys: Object.keys(result),
-      firstToolArgsPreview: result.toolCalls?.[0]?.argumentsJson?.slice(0, 300) ?? null
-    }
-    console.log('[Optimizer] completion response ' + JSON.stringify(summary))
 
     if (!result.ok) {
       console.error('Optimizer provider error:', result.error)

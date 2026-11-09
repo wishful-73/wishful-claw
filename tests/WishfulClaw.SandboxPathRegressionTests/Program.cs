@@ -8,6 +8,7 @@
 using System;
 using System.IO;
 using System.Text.Json;
+using WishfulClaw.Agent.Desktop;
 using WishfulClaw.Agent;
 using WishfulClaw.Agent.Tools;
 using WishfulClaw.Core.Tools;

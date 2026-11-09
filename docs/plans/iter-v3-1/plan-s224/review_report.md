@@ -154,51 +154,51 @@ if (copy.type === 'image' && isPlainObject(copy.source)) {
 
 ---
 
-## ½×¶ÎÎå´¦ÖÃ¼ÇÂ¼£¨2026-10-26£¬ÊµÊ©·½»ØÌî£©
+## é˜¶æ®µäº”å¤„ç½®è®°å½•ï¼ˆ2026-10-26ï¼Œå®æ–½æ–¹å›å¡«ï¼‰
 
-**´¦ÖÃºó£º? 0 / ?? 0£¨±ØĞŞÓë½¨ÒéĞŞÈ«²¿ÊÕ¿Ú£¬??9 ²¿·Ö´¦Àí²¢ËµÃ÷£©/ ?? ÒÑ¼ÇÂ¼**
+**å¤„ç½®åï¼š? 0 / ?? 0ï¼ˆå¿…ä¿®ä¸å»ºè®®ä¿®å…¨éƒ¨æ”¶å£ï¼Œ??9 éƒ¨åˆ†å¤„ç†å¹¶è¯´æ˜ï¼‰/ ?? å·²è®°å½•**
 
-### ? ±ØĞŞ
+### ? å¿…ä¿®
 
-| # | ´¦ÖÃ | ÂäµØ |
+| # | å¤„ç½® | è½åœ° |
 |---|---|---|
-| 1 | **ÒÑĞŞ**¡£`writeFileSync` Ö±Ğ´¸Ä¡¸ÁÙÊ±ÎÄ¼ş + `rename` Ô­×ÓÌæ»»¡¹£»`existsSync` ¸Ä `isNonEmptyFile()`£¨`stat().isFile() && size > 0`£©£¬0 ×Ö½Ú/½Ø¶ÏÎÄ¼şÒ»ÂÉÖØĞ´£»`Buffer.from(...).length === 0` Ö±½Ó·µ»Ø `{ error }`£»Ë³ÊÖ°Ñ `mkdirSync/writeFileSync/existsSync` È«¸Ä `fs.promises`£¨??6£© | `src/main/ipc/misc-handlers.ts` `image:persist-chat` + ĞÂÔö `isNonEmptyFile()` |
+| 1 | **å·²ä¿®**ã€‚`writeFileSync` ç›´å†™æ”¹ã€Œä¸´æ—¶æ–‡ä»¶ + `rename` åŸå­æ›¿æ¢ã€ï¼›`existsSync` æ”¹ `isNonEmptyFile()`ï¼ˆ`stat().isFile() && size > 0`ï¼‰ï¼Œ0 å­—èŠ‚/æˆªæ–­æ–‡ä»¶ä¸€å¾‹é‡å†™ï¼›`Buffer.from(...).length === 0` ç›´æ¥è¿”å› `{ error }`ï¼›é¡ºæ‰‹æŠŠ `mkdirSync/writeFileSync/existsSync` å…¨æ”¹ `fs.promises`ï¼ˆ??6ï¼‰ | `src/main/ipc/misc-handlers.ts` `image:persist-chat` + æ–°å¢ `isNonEmptyFile()` |
 
-### ?? ½¨ÒéĞŞ
+### ?? å»ºè®®ä¿®
 
-| # | ´¦ÖÃ | ÂäµØ |
+| # | å¤„ç½® | è½åœ° |
 |---|---|---|
-| 1 | **ÒÑĞŞ**¡£²âÊÔ¸ÄÎª `import { filePathToMediaUrl }` Ö±½ÓÓÃäÖÈ¾¶Ëº¯Êı£¬É¾µô±¾µØ¸´¿ÌµÄ±àÂëÄ£°å£»ÎÄ¼şÀïÁô×¢ÊÍËµÃ÷¡¸²»Ğí¸´¿Ì¡¹µÄÀíÓÉ | `tests/local-media-url/program.ts` |
-| 2 | **ÒÑĞŞ**¡£`parseMediaUrlPath` ¼ÓÈıÌõ£º`isAbsolute()` ·ñÔò¾Ü¡¢`..` ¶Î¾Ü£¨Á½ÖÖĞ±¸Ü£©¡¢UNC ¾Ü£¨`\\` Óë `//` Á½ÖÖÇ°×º£©¡£²¹ 6 Ìõ¶ÏÑÔ | `src/main/lib/local-media-url.ts` + ²âÊÔ ¡ì2b |
-| 3 | **ÒÑĞŞ**¡£¶µµ×·ÖÖ§ÏÈ `stat()`£¬³¬ `MAX_FALLBACK_BYTES`£¨64 MB£©·µ»Ø 413 ²¢ warn | `src/main/lib/local-media-protocol.ts` |
-| 4 | **ÒÑĞŞ**¡£³éÄ£¿é¼¶ `readBinaryFileViaIpc: ReadBinaryFileFn`£¬µ÷ÓÃµãÖ»´«º¯ÊıÃû | `src/renderer/src/hooks/use-chat-actions.ts` |
-| 5 | **ÒÑĞŞ**¡£`attachChatImagePaths` ¶ÔÒÑÓĞ `filePath` µÄ¿éÖ±½Ó¶ÌÂ·£¨±à¼­ÖØ·¢²»ÔÙÎªÍ¬Ò»ÕÅÍ¼ÖØ´«Ò»±é base64£©¡£È¡Éá£ºĞÅÈÎ¼ÈÓĞÂ·¾¶£¬ÎÄ¼ş±»Íâ²¿É¾³ıÊ±×ß¡¸ÁÑÍ¼¡¹¶ø·Ç×ÔÓú ¡ª¡ª ¸Ã³¡¾°±¾¾ÍÎŞÊı¾İ¿É»Ö¸´ | `src/renderer/src/lib/image-persist-chat.ts` |
-| 6 | **ÒÑĞŞ**£¨Óë ?1 Í¬µ¶£© | Í¬ÉÏ |
-| 7 | **ÒÑĞŞ**¡£ĞÂÔö `chatImageFileNameFromBuffer(buffer, mediaType)`£¬handler ½âÒ»´Î buffer ºó¼ÈËã¹şÏ£ÓÖĞ´ÅÌ£»`chatImageFileName(base64)` ±£ÁôÎª±¡°ü×° | `src/main/lib/chat-image-dir.ts` |
-| 8 | **ÒÑĞŞ**¡£×Ô·´¶ÏÑÔ»»³É¡¸´ø»»ĞĞµÄ·Ç¹æ·¶ base64£¬ÎÄ±¾²»Í¬¡¢×Ö½ÚÏàÍ¬ ? Í¬Ãû¡¹£¬²¢¼ÓÇ°ÖÃ¶ÏÑÔ¶¤×¡¡¸ÎÄ±¾È·Êµ²»Í¬¡¹ | `tests/chat-image-dir/program.ts` ¡ì4 |
-| 9 | **²¿·Ö´¦Àí**¡£`attachChatImagePaths` ²¹ 5 ×é¶ÏÑÔ£¨³É¹¦²¹Â·¾¶ÇÒ±£Áô data / Å×Òì³£½µ¼¶ / ·µ»Ø error ½µ¼¶ / ÒÑÓĞÂ·¾¶¶ÌÂ· / »ûĞÎ¿é²»Å×£©£¬¹² +19 ¶ÏÑÔ¡£**`serializeMessage` ¶Ëµ½¶Ë¶ÏÑÔÎ´²¹**£ºËüÒÀÀµ `workerRequest` ¡ú `ipcClient` ¡ú `window.electron`£¬node µ¥²âÆğ²»À´£»°şÀëÓïÒå±¾ÉíÒÑÓÉ `stripImagePayloads` µÄ 23 Ïî¸²¸Ç£¬Èı¸öµ÷ÓÃµãÖ»ÄÜ¿¿ `db-helpers.ts:132/133/136` µÄ code review ÊØ×¡¡£**ÒÅÁô·çÏÕ¼ÇÈë tech-debt**£º`db-helpers` µÄ DB ±¡·â×°²ãÈ±¿É×¢ÈëµÄ´«Êä²ã£¬µ¼ÖÂ¡¸ÂäµãÓĞÃ»ÓĞ½Ó´í¡¹ÎŞ·¨±»×Ô¶¯»¯¶¢×¡¡£ | `tests/image-payload/program.ts` ¡ì6 |
-| 10 | **ÒÑĞŞ**¡£`isImageBlock` ¸Ä `!!block && typeof block === 'object' && block.type === 'image'`£¬Õû¶ÎÒÆ½ø `try` | `src/renderer/src/lib/image-persist-chat.ts` |
-| 11 | **ÒÑĞŞ**¡£hydrate ºó¡¢ÂäÅÌÇ°¼ÓÀ¹½Ø£º`imageAttachments.length > 0 && hydratedAttachments.length === 0 && !messageText.trim()` ¡ú warn + `return false` | `src/renderer/src/hooks/use-chat-actions.ts` |
+| 1 | **å·²ä¿®**ã€‚æµ‹è¯•æ”¹ä¸º `import { filePathToMediaUrl }` ç›´æ¥ç”¨æ¸²æŸ“ç«¯å‡½æ•°ï¼Œåˆ æ‰æœ¬åœ°å¤åˆ»çš„ç¼–ç æ¨¡æ¿ï¼›æ–‡ä»¶é‡Œç•™æ³¨é‡Šè¯´æ˜ã€Œä¸è®¸å¤åˆ»ã€çš„ç†ç”± | `tests/local-media-url/program.ts` |
+| 2 | **å·²ä¿®**ã€‚`parseMediaUrlPath` åŠ ä¸‰æ¡ï¼š`isAbsolute()` å¦åˆ™æ‹’ã€`..` æ®µæ‹’ï¼ˆä¸¤ç§æ–œæ ï¼‰ã€UNC æ‹’ï¼ˆ`\\` ä¸ `//` ä¸¤ç§å‰ç¼€ï¼‰ã€‚è¡¥ 6 æ¡æ–­è¨€ | `src/main/lib/local-media-url.ts` + æµ‹è¯• Â§2b |
+| 3 | **å·²ä¿®**ã€‚å…œåº•åˆ†æ”¯å…ˆ `stat()`ï¼Œè¶… `MAX_FALLBACK_BYTES`ï¼ˆ64 MBï¼‰è¿”å› 413 å¹¶ warn | `src/main/lib/local-media-protocol.ts` |
+| 4 | **å·²ä¿®**ã€‚æŠ½æ¨¡å—çº§ `readBinaryFileViaIpc: ReadBinaryFileFn`ï¼Œè°ƒç”¨ç‚¹åªä¼ å‡½æ•°å | `src/renderer/src/hooks/use-chat-actions.ts` |
+| 5 | **å·²ä¿®**ã€‚`attachChatImagePaths` å¯¹å·²æœ‰ `filePath` çš„å—ç›´æ¥çŸ­è·¯ï¼ˆç¼–è¾‘é‡å‘ä¸å†ä¸ºåŒä¸€å¼ å›¾é‡ä¼ ä¸€é base64ï¼‰ã€‚å–èˆï¼šä¿¡ä»»æ—¢æœ‰è·¯å¾„ï¼Œæ–‡ä»¶è¢«å¤–éƒ¨åˆ é™¤æ—¶èµ°ã€Œè£‚å›¾ã€è€Œéè‡ªæ„ˆ â€”â€” è¯¥åœºæ™¯æœ¬å°±æ— æ•°æ®å¯æ¢å¤ | `src/renderer/src/lib/image-persist-chat.ts` |
+| 6 | **å·²ä¿®**ï¼ˆä¸ ?1 åŒåˆ€ï¼‰ | åŒä¸Š |
+| 7 | **å·²ä¿®**ã€‚æ–°å¢ `chatImageFileNameFromBuffer(buffer, mediaType)`ï¼Œhandler è§£ä¸€æ¬¡ buffer åæ—¢ç®—å“ˆå¸Œåˆå†™ç›˜ï¼›`chatImageFileName(base64)` ä¿ç•™ä¸ºè–„åŒ…è£… | `src/main/lib/chat-image-dir.ts` |
+| 8 | **å·²ä¿®**ã€‚è‡ªåæ–­è¨€æ¢æˆã€Œå¸¦æ¢è¡Œçš„éè§„èŒƒ base64ï¼Œæ–‡æœ¬ä¸åŒã€å­—èŠ‚ç›¸åŒ ? åŒåã€ï¼Œå¹¶åŠ å‰ç½®æ–­è¨€é’‰ä½ã€Œæ–‡æœ¬ç¡®å®ä¸åŒã€ | `tests/chat-image-dir/program.ts` Â§4 |
+| 9 | **éƒ¨åˆ†å¤„ç†**ã€‚`attachChatImagePaths` è¡¥ 5 ç»„æ–­è¨€ï¼ˆæˆåŠŸè¡¥è·¯å¾„ä¸”ä¿ç•™ data / æŠ›å¼‚å¸¸é™çº§ / è¿”å› error é™çº§ / å·²æœ‰è·¯å¾„çŸ­è·¯ / ç•¸å½¢å—ä¸æŠ›ï¼‰ï¼Œå…± +19 æ–­è¨€ã€‚**`serializeMessage` ç«¯åˆ°ç«¯æ–­è¨€æœªè¡¥**ï¼šå®ƒä¾èµ– `workerRequest` â†’ `ipcClient` â†’ `window.electron`ï¼Œnode å•æµ‹èµ·ä¸æ¥ï¼›å‰¥ç¦»è¯­ä¹‰æœ¬èº«å·²ç”± `stripImagePayloads` çš„ 23 é¡¹è¦†ç›–ï¼Œä¸‰ä¸ªè°ƒç”¨ç‚¹åªèƒ½é  `db-helpers.ts:132/133/136` çš„ code review å®ˆä½ã€‚**é—ç•™é£é™©è®°å…¥ tech-debt**ï¼š`db-helpers` çš„ DB è–„å°è£…å±‚ç¼ºå¯æ³¨å…¥çš„ä¼ è¾“å±‚ï¼Œå¯¼è‡´ã€Œè½ç‚¹æœ‰æ²¡æœ‰æ¥é”™ã€æ— æ³•è¢«è‡ªåŠ¨åŒ–ç›¯ä½ã€‚ | `tests/image-payload/program.ts` Â§6 |
+| 10 | **å·²ä¿®**ã€‚`isImageBlock` æ”¹ `!!block && typeof block === 'object' && block.type === 'image'`ï¼Œæ•´æ®µç§»è¿› `try` | `src/renderer/src/lib/image-persist-chat.ts` |
+| 11 | **å·²ä¿®**ã€‚hydrate åã€è½ç›˜å‰åŠ æ‹¦æˆªï¼š`imageAttachments.length > 0 && hydratedAttachments.length === 0 && !messageText.trim()` â†’ warn + `return false` | `src/renderer/src/hooks/use-chat-actions.ts` |
 
-### ?? ¹Û²ì
+### ?? è§‚å¯Ÿ
 
-| # | ´¦ÖÃ |
+| # | å¤„ç½® |
 |---|---|
-| 1 | **ÒÑĞŞ**¡£×¢ÊÍÂ·¾¶¶©ÕıÎª `src/main/lib/local-media-protocol.ts` |
-| 2 | **¼ÇÂ¼²»ĞŞ**¡£`protocol.handle` ×¢²áÔÚ default session£¬Ô¶¶ËÒ³Ãæ¿ÉÌ½²â±¾»úÎÄ¼şÊÇ·ñ´æÔÚ¡£µ±Ç° `BrowserPanel` µÄÔ¶¶ËÒ³ÃæÄ¬ÈÏ²»´ø partition ²Å³ÉÁ¢£¬ÇÒ¶Á²»»ØÄÚÈİ£»¼Ó¹Ì£¨Ğ£Ñé `referrer` »ò×¨ÓÃ partition£©Áô×÷ºóĞøĞèÇó |
-| 3 | **¼ÇÂ¼²»ĞŞ**¡£`filePath` ÊÇäÖÈ¾¶Ë×ÔÓÉ×Ö¶Î£¬Ğ­ÒéÖ»°´À©Õ¹Ãû°Ñ¹Ø¡£µ±Ç°äÖÈ¾¶Ë¿ÉĞÅ£¬Êô¿É½ÓÊÜÉè¼Æ |
-| 4 | **ÒÑ²¹×¢ÊÍ**¡£`areImageAttachmentsEqual` ±È¶Ô `filePath` ´¦ËµÃ÷¡¸±ÜÃâÍ¬Ò»ÕÅÍ¼¡ºÎŞÂ·¾¶ ¡ú ÓĞÂ·¾¶¡»±»ÅĞÏàµÈ¶øÌø¹ıÂäÅÌ¡¹ |
-| 5 | **¼ÇÂ¼²»ĞŞ**¡£hydrate ´®ĞĞ `for...of await`£»µ¥ÆÁ¶àÍ¼Ê±Âı£¬µ«²¢·¢¶Á 20 MB Í¼µÄ·åÖµÄÚ´æ·çÏÕ¸ü´ó£¬Áô´ıÓĞÊµ²âÊı¾İÔÙ¶¨ |
-| 6 | **ÒÑ¼ÇÂ¼**¡£`index.ts` 495 ĞĞ£¬ÀëÓ²Ïß 5 ĞĞ£»ÏÂ´ÎÔÙ¶¯ÏÈ²ğ»òÏÈ¹Ò»íÃâÍ· |
-| 7 | ÒÑĞ´ÔÚ `docs/data-storage.md`£¬ÎŞ¶¯×÷ |
+| 1 | **å·²ä¿®**ã€‚æ³¨é‡Šè·¯å¾„è®¢æ­£ä¸º `src/main/lib/local-media-protocol.ts` |
+| 2 | **è®°å½•ä¸ä¿®**ã€‚`protocol.handle` æ³¨å†Œåœ¨ default sessionï¼Œè¿œç«¯é¡µé¢å¯æ¢æµ‹æœ¬æœºæ–‡ä»¶æ˜¯å¦å­˜åœ¨ã€‚å½“å‰ `BrowserPanel` çš„è¿œç«¯é¡µé¢é»˜è®¤ä¸å¸¦ partition æ‰æˆç«‹ï¼Œä¸”è¯»ä¸å›å†…å®¹ï¼›åŠ å›ºï¼ˆæ ¡éªŒ `referrer` æˆ–ä¸“ç”¨ partitionï¼‰ç•™ä½œåç»­éœ€æ±‚ |
+| 3 | **è®°å½•ä¸ä¿®**ã€‚`filePath` æ˜¯æ¸²æŸ“ç«¯è‡ªç”±å­—æ®µï¼Œåè®®åªæŒ‰æ‰©å±•åæŠŠå…³ã€‚å½“å‰æ¸²æŸ“ç«¯å¯ä¿¡ï¼Œå±å¯æ¥å—è®¾è®¡ |
+| 4 | **å·²è¡¥æ³¨é‡Š**ã€‚`areImageAttachmentsEqual` æ¯”å¯¹ `filePath` å¤„è¯´æ˜ã€Œé¿å…åŒä¸€å¼ å›¾ã€æ— è·¯å¾„ â†’ æœ‰è·¯å¾„ã€è¢«åˆ¤ç›¸ç­‰è€Œè·³è¿‡è½ç›˜ã€ |
+| 5 | **è®°å½•ä¸ä¿®**ã€‚hydrate ä¸²è¡Œ `for...of await`ï¼›å•å±å¤šå›¾æ—¶æ…¢ï¼Œä½†å¹¶å‘è¯» 20 MB å›¾çš„å³°å€¼å†…å­˜é£é™©æ›´å¤§ï¼Œç•™å¾…æœ‰å®æµ‹æ•°æ®å†å®š |
+| 6 | **å·²è®°å½•**ã€‚`index.ts` 495 è¡Œï¼Œç¦»ç¡¬çº¿ 5 è¡Œï¼›ä¸‹æ¬¡å†åŠ¨å…ˆæ‹†æˆ–å…ˆæŒ‚è±å…å¤´ |
+| 7 | å·²å†™åœ¨ `docs/data-storage.md`ï¼Œæ— åŠ¨ä½œ |
 
-### ´¦ÖÃºóÃÅ½û£¨2026-10-26 ¸´ÅÜ£©
+### å¤„ç½®åé—¨ç¦ï¼ˆ2026-10-26 å¤è·‘ï¼‰
 
-| ÃüÁî | ½á¹û |
+| å‘½ä»¤ | ç»“æœ |
 |---|---|
-| `npm run typecheck` | 0 ´íÎó |
-| `npm test` | **83/83 Í¨¹ı** |
-| `npm run test:local-media-url` | 44 Ïî¶ÏÑÔ |
-| `npm run test:chat-image-dir` | 18 Ïî¶ÏÑÔ |
-| `npm run test:image-payload` | 33 Ïî¶ÏÑÔ |
-| `dotnet build src\runtime\WishfulClaw.sln` | 0 ¾¯¸æ 0 ´íÎó |
+| `npm run typecheck` | 0 é”™è¯¯ |
+| `npm test` | **83/83 é€šè¿‡** |
+| `npm run test:local-media-url` | 44 é¡¹æ–­è¨€ |
+| `npm run test:chat-image-dir` | 18 é¡¹æ–­è¨€ |
+| `npm run test:image-payload` | 33 é¡¹æ–­è¨€ |
+| `dotnet build src\runtime\WishfulClaw.sln` | 0 è­¦å‘Š 0 é”™è¯¯ |

@@ -9,7 +9,6 @@ import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { useShallow } from 'zustand/react/shallow'
 import { InputArea } from '@renderer/components/chat/InputArea'
-import { ProjectTerminalDock } from '@renderer/components/terminal/ProjectTerminalDock'
 import { WorkingFolderSelectorDialog } from './WorkingFolderSelectorDialog'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { useChatStore, type Project } from '@renderer/stores/chat-store'
@@ -124,7 +123,6 @@ export function ChatHomePage(): React.JSX.Element {
     selectedProject?.workingFolder ?? (mode === 'chat' ? undefined : workingFolder)
   const homeSshConnectionId =
     selectedProject?.sshConnectionId ?? (mode === 'chat' ? null : sshConnectionId)
-  const terminalDockOpen = false  // Home page has no session; dock state is session-level now
   const { sendMessage } = useChatActions()
   const [folderDialogOpen, setFolderDialogOpen] = React.useState(false)
   const [createProjectDialogOpen, setCreateProjectDialogOpen] = React.useState(false)
@@ -326,15 +324,6 @@ export function ChatHomePage(): React.JSX.Element {
           </div>
         </div>
       </div>
-
-      {homeProject?.id && terminalDockOpen && (homeWorkingFolder || homeSshConnectionId) && (
-        <ProjectTerminalDock
-          projectId={homeProject.id}
-          projectName={homeProject.name}
-          workingFolder={homeWorkingFolder ?? null}
-          sshConnectionId={homeSshConnectionId}
-        />
-      )}
 
       {mode !== 'chat' && (
         <WorkingFolderSelectorDialog

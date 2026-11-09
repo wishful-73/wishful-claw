@@ -1,4 +1,5 @@
 using System.Text.Json;
+using WishfulClaw.Agent.Compression;
 using WishfulClaw.Agent;
 using WishfulClaw.Contracts;
 

@@ -1,0 +1,1120 @@
+/*
+ * Ported from OpenCowork.
+ * Original: Copyright 2026 AIDotNet
+ * Licensed under the Apache License, Version 2.0 (the "License").
+ * Modified by the Wishful 心相 team for Wishful Claw.
+ */
+
+// 500-line exemption（1124 行 as of 2026-10-30；以实际行数为准，不因行数变动重新复核）。
+// 豁免理由不变：what is left is the compression pipeline itself and its invariants —
+// PlanCompaction → PartitionFold → SummarizeAsync → MechanicalFold → Replace, plus the
+// usage-stripping rules that keep every wire entry's token accounting honest. Those stages
+// look separable but are not independent — the fold partition decides what the summarizer
+// sees, the mechanical digest decides which prior summaries survive, and the replace step
+// has to agree with all three about what "one summary" means. Splitting them would turn a
+// single ordered pipeline into a set of files that each only make sense with the other four
+// open. Leaf logic that has no stake in the ordering already lives elsewhere:
+// ContextCompression.TokenEstimation.cs（估算）、ContextCompression.UserSnapshot.cs（S-208
+// 快照）、ContextCompression.ImagePlaceholder.cs（S-275 图片占位化）。See AGENTS.md.
+
+using System.Buffers;
+using System.Diagnostics;
+using System.Net.Http;
+using System.Text;
+using System.Text.Json;
+using WishfulClaw.Agent.Llm;
+using WishfulClaw.Contracts;
+using WishfulClaw.Core.Protocol;
+
+namespace WishfulClaw.Agent.Compression;
+
+/// <summary>
+/// LLM-based context compression, inspired by Reasonix's compact.go.
+///
+/// Flow:
+/// 1. PlanCompaction: split conversation into pinned prefix + foldable middle + recent tail
+/// 2. PartitionFold: in the middle, keep small user turns verbatim; fold assistant messages,
+///    tool results, large user turns and every prior compaction summary
+/// 3. SummarizeAsync: call the provider's LLM (no tools) to distill the foldable region into a briefing
+/// 4. On failure: MechanicalFold (deterministic stand-in); the prior summaries are then kept
+///    in the result as well, since the mechanical digest carries no information
+/// 5. Replace: session becomes [pinned prefix] + [kept user turns] + [summary] + [recent tail]
+///
+/// The summary is wrapped in &lt;compaction-summary&gt; tags so the model can distinguish it
+/// from live user input.
+/// </summary>
+public static partial class ContextCompression
+{
+    // ── HttpClient for summarization calls ──
+
+    private static readonly HttpClient Http = new(new HttpClientHandler
+    {
+        MaxConnectionsPerServer = 4
+    })
+    {
+        Timeout = TimeSpan.FromSeconds(400)
+    };
+
+    // ── Constants (aligned with Reasonix compact.go) ──
+
+    private const int PreserveHeadCount = 2;       // system + first user
+    private const int PreserveTailCount = 12;       // recent tail messages
+    private const int DefaultTailTokens = 16384;    // verbatim recent-tail token budget
+    private const int MinCompactMessages = 2;       // skip compaction below this many foldable messages
+    private const int MinFoldTokens = 400;          // skip if fold region too small
+    private const double FallbackTokPerChar = 0.25; // ~4 chars/token before usage data
+    private const int DefaultContextCompressionLimit = 200_000; // fallback when provider has no contextLength
+    private const int MaxPinnedFirstUserTokens = 1500;
+    private const double PinnedFirstUserWindowFrac = 0.15;
+    private const int SummaryInputBaseCharBudget = 400_000;
+    private const int SummaryMaxAttempts = 3;
+    private const int SummaryMaxOutputTokens = 8_192;
+
+    // S-269: the summarizer honours Retry-After, but with its own ceiling. The shared
+    // ProviderRetryPolicy cap is 15 s, tuned for the 10-attempt main provider turn —
+    // clamping a 29 s Retry-After to 15 s there still leaves several shots. The
+    // summarizer only gets 3, so clamping means every retry lands inside the same
+    // upstream admission window and the whole pass degrades to a mechanical fold.
+    // internal 是为可测：回归套件要断言摘要器的上限确实高于主 turn 的 15 s。
+    internal const int SummaryMaxBackoffMs = 45_000;
+
+    // S-269: upstream can answer "retry shortly (after N s)" in the body with no
+    // Retry-After header — `ttft_admission_refused` does exactly that. 30 s sits in
+    // the middle of the observed 3~39 s spread; the old fixed 1.5 s burned all three
+    // attempts inside one window.
+    internal const int SummaryRateLimitFallbackMs = 30_000;
+
+    // S-269 failure reasons, carried to the renderer so the fallback can say *why*
+    // instead of claiming the summarizer is unavailable when the channel is throttling.
+    internal const string SummarizerFailureRateLimited = "rate_limited";
+    internal const string SummarizerFailureServerError = "server_error";
+    internal const string SummarizerFailureTimeout = "timeout";
+    internal const string SummarizerFailureContextOverflow = "context_overflow";
+    internal const string SummarizerFailureEmptyOutput = "empty_output";
+    internal const string SummarizerFailureOther = "other";
+
+    /// <summary>
+    /// S-269: what a failed summarizer attempt means — wait and resend, shrink the
+    /// input, retry quickly, or give up.
+    /// </summary>
+    internal enum SummaryFailureAction
+    {
+        /// <summary>429 / 5xx: honour the upstream's own schedule, resend the same payload.</summary>
+        WaitUpstream,
+        /// <summary>Genuine context-window overflow: shrink the input, retry at once.</summary>
+        ShrinkBudget,
+        /// <summary>Empty output or timeout: short backoff, same payload — the provider hiccupped.</summary>
+        RetryShortly,
+        /// <summary>Real 400 / unparseable body / unsupported provider: resending cannot help.</summary>
+        GiveUp
+    }
+
+    /// <summary>S-269: the decision <see cref="ResolveSummaryFailurePolicy"/> reaches for one failure.</summary>
+    internal readonly record struct SummaryFailurePolicy(
+        SummaryFailureAction Action,
+        string Reason,
+        string? Detail,
+        TimeSpan? Wait = null);
+
+    /// <summary>
+    /// S-269: the single place that maps an exception to a retry decision. Pulled out of
+    /// <see cref="SummarizeAsync"/> so the regression suite can assert the mapping —
+    /// above all that a 429 never shrinks the input budget and a real 400 is never
+    /// retried — without standing up an HTTP mock.
+    /// </summary>
+    internal static SummaryFailurePolicy ResolveSummaryFailurePolicy(Exception ex)
+    {
+        // Checked first: a rate-limited request must keep its payload. Shrinking the
+        // input on a 429 throws away the very attempt the upstream just asked us to
+        // repeat, and used to burn all three shots inside one admission window.
+        if (ex is ProviderHttpException httpEx && ProviderRetryPolicy.IsRetryableStatus(httpEx.StatusCode))
+        {
+            return new SummaryFailurePolicy(
+                SummaryFailureAction.WaitUpstream,
+                httpEx.StatusCode == 429 ? SummarizerFailureRateLimited : SummarizerFailureServerError,
+                TruncateDetail(httpEx.Message),
+                httpEx.RetryAfter ?? TimeSpan.FromMilliseconds(SummaryRateLimitFallbackMs));
+        }
+
+        // Genuine input-too-long: this is what the decreasing budget was designed for.
+        // An overflow usually arrives as a 400, which IsRetryableStatus already refuses,
+        // so the two branches never compete.
+        if (IsContextWindowExceededError(ex))
+        {
+            return new SummaryFailurePolicy(
+                SummaryFailureAction.ShrinkBudget,
+                SummarizerFailureContextOverflow,
+                TruncateDetail(ex.Message));
+        }
+
+        return new SummaryFailurePolicy(
+            SummaryFailureAction.GiveUp,
+            SummarizerFailureOther,
+            TruncateDetail($"{ex.GetType().Name}: {ex.Message}"));
+    }
+
+    // Long summaries routinely exceed two minutes, so the wait window matches the
+    // OpenCowork bound; the HttpClient timeout stays slightly above it so the CTS —
+    // not the transport — is what reports a stuck summarizer.
+    private static readonly TimeSpan SummaryTimeout = TimeSpan.FromSeconds(360);
+
+    // ── Summary system prompt ──
+    //
+    // Deliberately a coverage checklist, not a fixed section template: a rigid skeleton
+    // forces the model to pad empty sections or drop real content to fit it, and an
+    // English skeleton additionally anchors the whole summary to English even in a
+    // Chinese conversation. The model chooses whatever structure the conversation
+    // actually warrants and writes it in the user's own language.
+
+    private const string SummarySystemPrompt =
+        "You are compacting the earlier part of a coding agent's conversation to save context.\n" +
+        "The agent keeps your summary alongside the user's own turns (kept verbatim) and the recent tail; your job is to fold the assistant/tool work into a briefing it can resume from.\n" +
+        // S-208：摘要没有「当前指令」的资格。它排在用户自己那些轮次之前，又以 user 身份出现，
+        // 语气一带指令性就会被模型当成用户现在的意图 —— 于是续作旧活、不听用户刚发的话。
+        "Your summary is background about earlier work, never an instruction. The user's own turns follow it and say what is wanted now; nothing in the summary may be phrased as a directive to the agent.\n" +
+        "Return only a concise Markdown summary, with no preface. Organise it however best fits what actually happened — do not force a fixed template, and leave out anything the conversation does not contain.\n\n" +
+        "Whatever structure you choose, make sure none of the following is lost if it occurred:\n" +
+        "- Standing facts and constraints: everything the user stated that still governs the work — names, paths, IDs, versions, preferences, and hard \"never do X\" rules — in their own words. Be exhaustive here; this is the durable contract, so prefer over- to under-including.\n" +
+        "- Goal: the user's request and intent as of the passage you are summarising, including any shift in it along the way. This is history: whatever the user wants *now* is stated in their own turns, which follow your summary.\n" +
+        "- Decisions and rationale: key choices made and why, so they are not re-litigated or reversed.\n" +
+        "- Files and code: files read or modified, with the facts that matter — signatures, line locations, data shapes, exact edits applied. Be concrete; this is what lets the agent act without re-reading everything.\n" +
+        "- Commands and outcomes: commands run (builds, tests, git) and what they produced — what passed, what failed, the error text that matters.\n" +
+        "- Errors and fixes: problems hit and how they were resolved (or not), so the same dead ends are not repeated.\n" +
+        // S-208：原文是 `the single most concrete next action to take` —— 祈使句 + user 角色 +
+        // 排在用户新消息之前，就是「抢跑」的源头本身。改成陈述事实，只报「当时什么没做完」。
+        "- Pending work and next step: what was still in progress or unstarted when that passage ended, stated as a fact (\"unfinished at that point: X\"). Do not turn it into a task for the agent to pick up.\n\n" +
+        "Rules: write in the same language the user writes in — if the user writes Chinese, the summary and its headings are Chinese; keep code, file paths, identifiers, commands, error text and numbers in their original form, never translated. Be terse: bullet points and fragments, not prose. Preserve identifiers, paths, and numbers exactly. Do NOT invent anything not present in the messages; if something is unknown, leave it out rather than guessing. Write every line as a record of what happened — no imperatives, no \"next, do X\".";
+
+    private const string SummaryTagOpen = "<compaction-summary>";
+    private const string SummaryTagClose = "</compaction-summary>";
+
+    // ── Public API ──
+
+    /// <summary>
+    /// Single logical result of one compression pass — the sole source for the
+    /// Agent memory replacement, the chat artifacts (boundary + summary) and the
+    /// persistence snapshot (contract: compression-contract.md §七).
+    /// </summary>
+    public sealed record CompactionOutcome(
+        List<AgentRuntimeChatMessage> Conversation,
+        List<JsonElement> WireConversation,
+        bool Compacted,
+        bool SummarizerFailed,
+        int MessagesSummarized,
+        int OriginalCount,
+        string? SummaryMessageId,
+        string? SummarizerFailureReason = null,
+        string? SummarizerFailureDetail = null);
+
+    /// <summary>
+    /// Compacts the conversation: summarizes the foldable middle, keeps pinned prefix and recent tail.
+    /// Returns a <see cref="CompactionOutcome"/>; <c>Compacted=false</c> means there was nothing
+    /// to fold. On LLM failure, falls back to mechanical fold (SummarizerFailed=true).
+    /// </summary>
+    public static async Task<CompactionOutcome> CompactAsync(
+        List<AgentRuntimeChatMessage> conversation,
+        List<JsonElement> wireConversation,
+        JsonElement provider,
+        IWorkerRequestContext context,
+        CancellationToken cancellationToken,
+        string? sessionId = null,
+        Func<string, ValueTask>? onSummaryDelta = null,
+        bool preserveTail = true)
+    {
+        var originalCount = conversation.Count;
+
+        var (head, start, ok) = PlanCompaction(conversation, provider, MinCompactMessages, preserveTail);
+
+        if (!ok)
+        {
+            // Try with min=1 for a single huge message
+            (head, start, ok) = PlanCompaction(conversation, provider, 1, preserveTail);
+            if (!ok)
+                return new CompactionOutcome(conversation, wireConversation, false, false, 0, originalCount, null);
+        }
+
+        var region = conversation.Skip(head).Take(start - head).ToList();
+
+        // Partition: keep small user turns verbatim; fold everything else — assistant
+        // messages, tool results, large user turns and every prior compaction summary.
+        var (_, fold) = PartitionFold(region, provider);
+
+        if (fold.Count == 0)
+            return new CompactionOutcome(conversation, wireConversation, false, false, 0, originalCount, null);
+
+        // Economic check: skip if fold region too small
+        if (EstimateMessagesTokens(fold) < MinFoldTokens)
+            return new CompactionOutcome(conversation, wireConversation, false, false, 0, originalCount, null);
+
+        // Summarize the foldable region
+        string summary;
+        string? summarizerFailure = null;
+        string? summarizerFailureDetail = null;
+        try
+        {
+            var result = await SummarizeAsync(fold, provider, context, cancellationToken, sessionId, onSummaryDelta);
+            summary = result.Summary ?? MechanicalFoldDigest(fold.Count);
+            summarizerFailure = result.FailureReason;
+            summarizerFailureDetail = result.FailureDetail;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // SummaryTimeout fired (linked CTS CancelAfter) while the caller is
+            // still running — degrade to mechanical fold instead of letting the
+            // OCE escape and fail the whole run. Caller-initiated cancellation
+            // (token requested) is rethrown below.
+            WorkerLog.Warn("context compression summarization timed out; falling back to mechanical fold");
+            summary = MechanicalFoldDigest(fold.Count);
+            summarizerFailure = SummarizerFailureTimeout;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            WorkerLog.Warn($"context compression LLM summarization failed unexpectedly: {ex.GetType().Name}: {ex.Message}");
+            summary = MechanicalFoldDigest(fold.Count);
+            summarizerFailure = SummarizerFailureOther;
+            summarizerFailureDetail = $"{ex.GetType().Name}: {ex.Message}";
+        }
+
+        var summarizerFailed = summarizerFailure is not null;
+
+        // Build the compacted conversation
+        var newConversation = new List<AgentRuntimeChatMessage>();
+        var newWireConversation = new List<JsonElement>();
+
+        // Pinned prefix (system prompt + first user turn). The wire entries carry
+        // their pre-compaction `usage` — strip it (S-161); see StripUsage.
+        for (var i = 0; i < head; i++)
+        {
+            newConversation.Add(conversation[i]);
+            newWireConversation.Add(StripUsage(wireConversation[i]));
+        }
+
+        // Region survivors, in original order. Small user turns always survive; on
+        // summarizer failure the prior summaries survive too — MechanicalFoldDigest is a
+        // zero-information placeholder, and those summaries are the only carrier of the
+        // earlier history, so dropping them would erase it from the model's view. On
+        // success they are gone: their content now lives in the new summary below.
+        var survivors = 0;
+        for (var i = head; i < start; i++)
+        {
+            var message = conversation[i];
+            if (IsSmallUserTurn(message, provider) || (summarizerFailed && IsCompactionSummary(message)))
+            {
+                newConversation.Add(message);
+                newWireConversation.Add(StripUsage(wireConversation[i]));
+                survivors++;
+            }
+        }
+
+        // Summary message — same id + meta flow into the chat artifacts and the
+        // persistence snapshot so restore never re-inserts a duplicate.
+        //
+        // The wrapper carries no prose of its own: the tag is the semantic marker for
+        // the model, and the human-facing "this is a compaction summary" line is
+        // rendered from the renderer's i18n so it follows the UI language instead of
+        // being frozen as English text inside the durable conversation.
+        // S-208：用户最新那条消息不在 fold 里（它在保留尾巴里），所以摘要模型根本看不到它 ——
+        // 摘要里的「下一步」纯由旧上下文推断，与用户此刻的指令必然脱节，却以 user 身份排在
+        // 尾巴之前。这里由**代码**把用户末条消息原话插进摘要正文最前面，把「现在要什么」
+        // 顶到「以前干了什么」之前。不交给模型：①它看不到这条消息；②提示词要求 terse，
+        // 逐字原话会被概括掉。
+        //
+        // 快照必须留，不是因为原文一定在尾巴里 —— 它不一定在：单条超过 MaxPinnedFirstUserTokens
+        // 的消息会落进 fold（PartitionFold 把 large user messages 归 fold），手动压缩
+        // （preserveTail: false）更是整条尾巴都不保。这两条路上，摘要里的这份是唯一载体。
+        //
+        // 快照里还要交代时刻与执行进度，见 BuildLatestUserSnapshotBlock 与
+        // DescribeLatestUserProgress：压缩发生在「用户刚发话」和「跑了几分钟之后」两种时机，
+        // 原文在两种时机下该有的地位相反，只给原文会让后一种误判成当前指令。
+        //
+        // 位置必须在 <compaction-summary> 标签**之内、正文最前** —— 放到标签之前会让
+        // IsCompactionSummary 的 StartsWith 判定失配，摘要就会被当普通 user 消息处理，
+        // 破坏 one-summary 不变式（S-95）。
+        var latestUser = FindLatestUserSnapshot(conversation);
+        var compactedAt = DateTimeOffset.Now;
+        var summaryBody = latestUser is null
+            ? summary
+            : BuildLatestUserSnapshotBlock(latestUser, compactedAt) + "\n\n" + summary;
+        var summaryContent = $"{SummaryTagOpen}\n{summaryBody}\n{SummaryTagClose}";
+        var summaryMessage = AgentRuntimeChatMessage.User(summaryContent);
+        var summaryMessageId = $"compact-summary-{Guid.NewGuid():N}";
+        newConversation.Add(summaryMessage);
+        newWireConversation.Add(CreateSummaryWireMessage(
+            summaryMessageId,
+            summaryContent,
+            fold.Count,
+            recentMessagesPreserved: start < conversation.Count,
+            summarizerFailed,
+            compactedAt,
+            latestUser?.SentAt,
+            latestUser?.State));
+
+        // Recent tail
+        //
+        // S-275：尾部里单条就超预算的消息，其图片块在这里就地占位化。两侧一起改，
+        // 少改一边都不治本 —— conversation 侧决定「下一轮还算不算超」，wire 侧决定
+        // 「上游真实收到多少」。运行的典型现场是「一对 tool_use + tool_result」被
+        // minKeep=2 无条件保下，24 万字符的截图原样抬过 16384 的预算。
+        var tailBudget = TailBudgetTokens(provider);
+        for (var i = start; i < conversation.Count; i++)
+        {
+            var tailMessage = PlaceholdOversizedImageResults(conversation[i], tailBudget);
+            var tailWire = StripUsage(wireConversation[i]);
+            if (!ReferenceEquals(tailMessage, conversation[i]))
+            {
+                tailWire = PlaceholdWireMessageImages(tailWire);
+            }
+
+            newConversation.Add(tailMessage);
+            newWireConversation.Add(tailWire);
+        }
+
+        WorkerLog.Info(
+            $"context compression completed: original={conversation.Count} " +
+            $"folded={fold.Count} kept={survivors} summary={summary.Length}chars " +
+            $"result={newConversation.Count} summarizerFailed={summarizerFailed}" +
+            (summarizerFailure is null ? string.Empty : $" reason={summarizerFailure}"));
+
+        return new CompactionOutcome(
+            newConversation,
+            newWireConversation,
+            true,
+            summarizerFailed,
+            fold.Count,
+            originalCount,
+            summaryMessageId,
+            summarizerFailure,
+            summarizerFailureDetail);
+    }
+
+    // S-208 的「用户末条消息快照」在 ContextCompression.UserSnapshot.cs（分部类）。
+
+    // ── Usage stripping ──
+
+    /// <summary>
+    /// Returns the wire message without its <c>usage</c> field. Every wire entry
+    /// carried over from a *previous* context must go through this: its usage
+    /// reports the token count of the context it was measured in, not of the one it
+    /// now sits in, while ConversationCodec.FindRecentContextUsage reads the tail
+    /// entry's usage as the compression gate's numerator.
+    ///
+    /// Two callers, one rule (S-141 + S-161):
+    ///   - SessionRestoreTools — a restored snapshot's wire was copied out of the
+    ///     pre-compression context (measured case: 144083 reported vs ≈35K real).
+    ///   - CompactAsync / TruncateMessages — the same situation produced in-process.
+    ///     Without this, a turn aborted right after compaction leaves the old high
+    ///     usage sitting in the tail and the next send compresses again (S-161).
+    ///
+    /// A message without usage (or a non-object) is returned as-is.
+    /// </summary>
+    internal static JsonElement StripUsage(JsonElement message)
+    {
+        if (message.ValueKind != JsonValueKind.Object ||
+            !message.TryGetProperty("usage", out _))
+        {
+            return message;
+        }
+
+        var buffer = new ArrayBufferWriter<byte>();
+        using (var writer = new Utf8JsonWriter(buffer, new JsonWriterOptions
+        {
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        }))
+        {
+            writer.WriteStartObject();
+            foreach (var property in message.EnumerateObject())
+            {
+                if (property.NameEquals("usage")) continue;
+                property.WriteTo(writer);
+            }
+            writer.WriteEndObject();
+        }
+
+        using var doc = JsonDocument.Parse(buffer.WrittenMemory);
+        return doc.RootElement.Clone();
+    }
+
+    // ── Legacy truncation (kept as fallback) ──
+
+    /// <summary>
+    /// Simple token-based truncation. Used as a last-resort fallback when LLM summarization is unavailable.
+    /// </summary>
+    public static (List<AgentRuntimeChatMessage> conversation, List<JsonElement> wireConversation) TruncateMessages(
+        List<AgentRuntimeChatMessage> conversation,
+        List<JsonElement> wireConversation,
+        JsonElement provider)
+    {
+        var total = conversation.Count;
+        if (total <= PreserveHeadCount + PreserveTailCount)
+            return (conversation, wireConversation);
+
+        var headCount = Math.Min(PreserveHeadCount, total);
+        var tailCount = Math.Min(PreserveTailCount, total - headCount);
+
+        var newConversation = new List<AgentRuntimeChatMessage>();
+        var newWireConversation = new List<JsonElement>();
+
+        for (var i = 0; i < headCount; i++)
+        {
+            newConversation.Add(conversation[i]);
+            newWireConversation.Add(StripUsage(wireConversation[i]));
+        }
+
+        var tailStart = total - tailCount;
+        for (var i = tailStart; i < total; i++)
+        {
+            newConversation.Add(conversation[i]);
+            newWireConversation.Add(StripUsage(wireConversation[i]));
+        }
+
+        return (newConversation, newWireConversation);
+    }
+
+    // ── Planning ──
+
+    /// <summary>
+    /// Locates the region to summarize.
+    /// head = count of leading messages preserved verbatim (system + first user).
+    /// start = where the preserved recent tail begins.
+    /// msgs[head:start] is the compactable region.
+    /// </summary>
+    private static (int head, int start, bool ok) PlanCompaction(
+        List<AgentRuntimeChatMessage> conversation,
+        JsonElement provider,
+        int min,
+        bool preserveTail)
+    {
+        var head = PinnedPrefixLen(conversation, provider);
+        var contextLength = JsonHelpers.GetIntNullable(provider, "contextLength") ?? DefaultContextCompressionLimit;
+
+        int start;
+        if (!preserveTail)
+        {
+            // Manual compression folds through the end of the conversation — the
+            // OpenCowork reference records keepMessageIds: [] for manual cuts. No
+            // verbatim tail means the summary lands at the transcript tail, exactly
+            // where the live compression card sits, so completion swaps in place.
+            start = conversation.Count;
+        }
+        else if (contextLength > 0)
+        {
+            // S-275：预算不再就地算 —— TailBudgetTokens 是唯一出口，下面 CompactAsync
+            // 判断「哪条消息的图该占位」读的是同一个数，两处分开写迟早漂移。
+            start = TailStart(conversation, head, TailBudgetTokens(provider));
+        }
+        else
+        {
+            // No window: keep a fixed count of recent messages
+            start = conversation.Count - PreserveTailCount;
+            // Align off any tool result
+            while (start > head && conversation[start].Role == "user" && conversation[start].ToolResults.Count > 0)
+                start--;
+        }
+
+        if (start < head) start = head;
+        if (start - head < min) return (head, start, false);
+        return (head, start, true);
+    }
+
+    /// <summary>
+    /// Counts leading messages a fold keeps verbatim: system prompt and the first user turn
+    /// (if small enough). Prior compaction summaries are deliberately NOT pinned here —
+    /// S-95 moved them into the foldable region so the new summary absorbs them; pinning
+    /// them was what made summaries accumulate instead of rolling over.
+    /// </summary>
+    internal static int PinnedPrefixLen(List<AgentRuntimeChatMessage> conversation, JsonElement provider)
+    {
+        var i = 0;
+
+        // Skip system messages
+        while (i < conversation.Count && conversation[i].Role == "system")
+            i++;
+
+        // First user turn (if pinnable). T-10: must not be a tool-result-only user
+        // message — pinning that would keep an orphan tool_result in the prefix while
+        // its matching assistant(tool_use) gets folded away, and the provider rejects
+        // that with HTTP 400. Mirrors the same guard PartitionFold applies to kept
+        // messages (Role/user + ToolResults.Count == 0).
+        if (i < conversation.Count &&
+            conversation[i].Role == "user" &&
+            conversation[i].ToolResults.Count == 0 &&
+            !IsCompactionSummary(conversation[i]) &&
+            IsPinnableUserTurn(conversation[i], provider))
+        {
+            i++;
+        }
+
+        return i;
+    }
+
+    private static bool IsPinnableUserTurn(AgentRuntimeChatMessage message, JsonElement provider)
+    {
+        var budget = MaxPinnedFirstUserTokens;
+        var contextLength = JsonHelpers.GetIntNullable(provider, "contextLength") ?? DefaultContextCompressionLimit;
+        if (contextLength > 0)
+        {
+            var fracBudget = (int)(contextLength * PinnedFirstUserWindowFrac);
+            if (fracBudget < budget) budget = fracBudget;
+        }
+        return EstimateTextTokens(message.Text) <= budget;
+    }
+
+    /// <summary>
+    /// Walks newest→oldest, growing the verbatim tail until the next message would push its
+    /// token estimate past budgetTokens. Aligns the boundary back off any tool result.
+    /// </summary>
+    private static int TailStart(List<AgentRuntimeChatMessage> conversation, int head, int budgetTokens)
+    {
+        var start = conversation.Count;
+        var acc = 0;
+        var minKeep = 2;
+
+        for (var i = conversation.Count - 1; i > head; i--)
+        {
+            // A prior compaction summary always belongs to the fold region, never to the
+            // verbatim tail: a summary left in the tail would be carried into the result
+            // alongside the new summary, breaking the one-summary invariant (S-95).
+            if (IsCompactionSummary(conversation[i]) && conversation.Count - i > minKeep)
+                break;
+            var tok = EstimateMessageTokens(conversation[i]);
+            if (conversation.Count - i > minKeep && acc + tok > budgetTokens)
+                break;
+            acc += tok;
+            start = i;
+        }
+
+        // Align off tool results (don't start tail with an orphan tool result)
+        while (start > head && start < conversation.Count &&
+               conversation[start].Role == "user" && conversation[start].ToolResults.Count > 0)
+            start--;
+
+        return start;
+    }
+
+    // ── Partitioning ──
+
+    /// <summary>
+    /// True for a user turn small enough to survive compaction verbatim (and not a
+    /// tool-result-only turn, which would orphan its tool_use partner when folded).
+    /// </summary>
+    private static bool IsSmallUserTurn(AgentRuntimeChatMessage message, JsonElement provider) =>
+        message.Role == "user" &&
+        message.ToolResults.Count == 0 &&
+        IsPinnableUserTurn(message, provider);
+
+    /// <summary>
+    /// Splits a compaction region into:
+    /// - kept: small user turns (verbatim)
+    /// - fold: everything else — assistant messages, tool results, large user messages,
+    ///   and EVERY prior compaction summary (their content is absorbed by the new summary)
+    /// </summary>
+    internal static (List<AgentRuntimeChatMessage> kept, List<AgentRuntimeChatMessage> fold) PartitionFold(
+        List<AgentRuntimeChatMessage> region,
+        JsonElement provider)
+    {
+        var kept = new List<AgentRuntimeChatMessage>();
+        var fold = new List<AgentRuntimeChatMessage>();
+
+        foreach (var message in region)
+        {
+            // Compaction summaries always fold (S-95 rolling summary). The explicit
+            // IsCompactionSummary guard matters: a short summary would otherwise satisfy
+            // IsSmallUserTurn and leak back into kept, so the result would retain it
+            // instead of rolling it into the new summary.
+            if (!IsCompactionSummary(message) && IsSmallUserTurn(message, provider))
+            {
+                kept.Add(message);
+            }
+            else
+            {
+                fold.Add(message);
+            }
+        }
+
+        return (kept, fold);
+    }
+
+    // ── Summarization ──
+
+    /// <summary>
+    /// Outcome of one summarization pass. <c>Summary</c> is null when every attempt
+    /// failed; <c>FailureReason</c> then carries one of the SummarizerFailure* tokens so
+    /// the caller can tell "the channel throttled us" apart from "the summarizer is
+    /// broken" — the fallback copy used to claim the latter for both (S-269).
+    /// </summary>
+    private sealed record SummaryAttemptResult(string? Summary, string? FailureReason, string? FailureDetail);
+
+    /// <summary>
+    /// Calls the provider's LLM (no tools) to distill the foldable region into a structured briefing.
+    /// </summary>
+    /// <remarks>
+    /// S-269: the retry loop used to treat every failure the same — fixed 1.5 s / 3 s
+    /// backoff plus a smaller input budget each round. Against a 429 that is exactly
+    /// backwards: the upstream said "retry shortly (after 29 s)" and we came back 1.5 s
+    /// later with a *different* payload, burning all three attempts inside one admission
+    /// window. Now each failure class picks its own response:
+    /// · 429 / 5xx → wait what the upstream asked for (Retry-After, 30 s fallback), same payload
+    /// · context-window overflow → shrink the input, retry immediately (that is what the
+    ///   shrinking was for in the first place)
+    /// · empty output → short backoff and retry (provider hiccup)
+    /// · everything else (real 400, unparseable body) → stop, the same request will fail again
+    /// </remarks>
+    private static async Task<SummaryAttemptResult> SummarizeAsync(
+        List<AgentRuntimeChatMessage> fold,
+        JsonElement provider,
+        IWorkerRequestContext context,
+        CancellationToken cancellationToken,
+        string? sessionId,
+        Func<string, ValueTask>? onSummaryDelta)
+    {
+        var providerType = JsonHelpers.GetString(provider, "type") ?? string.Empty;
+        var budgetShift = 0; // only context-window overflow shrinks the input
+        string? lastReason = null;
+        string? lastDetail = null;
+
+        for (var attempt = 0; attempt < SummaryMaxAttempts; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var charBudget = SummaryInputBaseCharBudget >> Math.Min(budgetShift, 12);
+            var requestBody = BuildSummaryRequestBody(fold, charBudget);
+            var attemptDeltas = onSummaryDelta is null ? null : new List<string>();
+            Func<string, ValueTask>? attemptDelta = onSummaryDelta is null
+                ? null
+                : text =>
+                {
+                    attemptDeltas!.Add(text);
+                    return ValueTask.CompletedTask;
+                };
+            var delayMs = 0;
+
+            try
+            {
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                cts.CancelAfter(SummaryTimeout);
+                var summary = providerType switch
+                {
+                    "anthropic" => await CallAnthropicSummary(requestBody, provider, cts.Token, sessionId, attemptDelta),
+                    "openai-chat" => await CallOpenAISummary(requestBody, provider, cts.Token, sessionId, attemptDelta),
+                    "openai-responses" => await CallOpenAISummary(requestBody, provider, cts.Token, sessionId, attemptDelta),
+                    _ => throw new InvalidOperationException($"Unsupported provider for summarization: {providerType}")
+                };
+
+                if (!string.IsNullOrWhiteSpace(summary))
+                {
+                    if (onSummaryDelta is not null && attemptDeltas is not null)
+                    {
+                        foreach (var delta in attemptDeltas)
+                        {
+                            await onSummaryDelta(delta);
+                        }
+                    }
+
+                    return new SummaryAttemptResult(summary.Trim(), null, null);
+                }
+
+                lastReason = SummarizerFailureEmptyOutput;
+                lastDetail = "summarizer returned empty output";
+                delayMs = ProviderRetryPolicy.ComputeDelayMs(attempt + 1, null, SummaryMaxBackoffMs);
+                WorkerLog.Warn($"context compression attempt returned empty output attempt={attempt + 1} budget={charBudget}");
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                lastReason = SummarizerFailureTimeout;
+                lastDetail = $"summarizer timed out at input budget {charBudget} characters";
+                delayMs = ProviderRetryPolicy.ComputeDelayMs(attempt + 1, null, SummaryMaxBackoffMs);
+                WorkerLog.Warn($"context compression attempt timed out attempt={attempt + 1} inputChars={requestBody.Length}");
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                var policy = ResolveSummaryFailurePolicy(ex);
+                lastReason = policy.Reason;
+                lastDetail = policy.Detail;
+                WorkerLog.Warn(
+                    $"context compression attempt failed attempt={attempt + 1} action={policy.Action} " +
+                    $"reason={policy.Reason} budget={charBudget} " +
+                    $"error={ex.GetType().Name}: {ex.Message}");
+
+                switch (policy.Action)
+                {
+                    case SummaryFailureAction.GiveUp:
+                        return new SummaryAttemptResult(null, policy.Reason, policy.Detail);
+                    case SummaryFailureAction.ShrinkBudget:
+                        budgetShift++;
+                        delayMs = 0;
+                        break;
+                    case SummaryFailureAction.WaitUpstream:
+                        delayMs = ProviderRetryPolicy.ComputeDelayMs(
+                            attempt + 1,
+                            policy.Wait ?? TimeSpan.FromMilliseconds(SummaryRateLimitFallbackMs),
+                            SummaryMaxBackoffMs);
+                        break;
+                    default:
+                        delayMs = ProviderRetryPolicy.ComputeDelayMs(attempt + 1, null, SummaryMaxBackoffMs);
+                        break;
+                }
+            }
+
+            if (attempt + 1 < SummaryMaxAttempts)
+            {
+                await Task.Delay(delayMs, cancellationToken);
+            }
+        }
+
+        WorkerLog.Warn(
+            $"context compression LLM summarization failed after {SummaryMaxAttempts} attempts " +
+            $"reason={lastReason ?? SummarizerFailureOther} detail={lastDetail}");
+        return new SummaryAttemptResult(null, lastReason ?? SummarizerFailureOther, lastDetail);
+    }
+
+    private static string TruncateDetail(string? detail)
+    {
+        if (string.IsNullOrWhiteSpace(detail)) return string.Empty;
+        var trimmed = detail.Trim();
+        return trimmed.Length <= 300 ? trimmed : trimmed[..300] + "…";
+    }
+
+    /// <summary>
+    /// Builds the summarizer input with an independent character budget. Whole older
+    /// messages are removed first; a single message may then be truncated as a last resort.
+    /// </summary>
+    internal static string BuildSummaryRequestBody(
+        IReadOnlyList<AgentRuntimeChatMessage> messages,
+        int charBudget)
+    {
+        return RenderTranscript(messages, Math.Max(1_024, charBudget));
+    }
+
+    /// <summary>
+    /// Output ceiling for one summary call. A detailed briefing routinely needs far
+    /// more than a provider's chat-tuned default, but must never exceed what the
+    /// provider itself allows, so the two are clamped together.
+    /// </summary>
+    private static int SummaryOutputTokens(JsonElement provider)
+    {
+        var configuredMaxTokens = JsonHelpers.GetIntNullable(provider, "maxTokens") ?? SummaryMaxOutputTokens;
+        return Math.Min(
+            SummaryMaxOutputTokens,
+            configuredMaxTokens > 0 ? configuredMaxTokens : SummaryMaxOutputTokens);
+    }
+
+    /// <summary>
+    /// The summarizer's request headers, in one place so the regression suite can pin
+    /// them: the summary call must reach the same upstream configuration as a live
+    /// turn, including the provider's User-Agent (Cloudflare-fronted gateways answer
+    /// 1010 without it) and the OpenAI organization / project pair.
+    /// </summary>
+    internal static HttpRequestMessage BuildAnthropicSummaryRequest(
+        string url,
+        string bodyJson,
+        JsonElement provider,
+        string apiKey)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Content = new StringContent(bodyJson, Encoding.UTF8, "application/json");
+        request.Headers.Add("x-api-key", apiKey);
+        request.Headers.Add("anthropic-version", "2023-06-01");
+        ProviderHttpHeaders.ApplyAnthropic(request, provider);
+        return request;
+    }
+
+    /// <summary>
+    /// OpenAI-compatible counterpart of <see cref="BuildAnthropicSummaryRequest"/>.
+    /// <paramref name="sessionId"/> feeds the OpenCode Go routing header.
+    /// </summary>
+    internal static HttpRequestMessage BuildOpenAiSummaryRequest(
+        string url,
+        string bodyJson,
+        JsonElement provider,
+        string apiKey,
+        string? sessionId)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Content = new StringContent(bodyJson, Encoding.UTF8, "application/json");
+        request.Headers.Add("Authorization", $"Bearer {apiKey}");
+        ProviderHttpHeaders.ApplyOpenAiChat(request, provider, sessionId);
+        return request;
+    }
+
+    /// <summary>
+    /// Calls Anthropic Messages API for summarization (no tools, no streaming).
+    /// </summary>
+    private static async Task<string> CallAnthropicSummary(
+        string transcript,
+        JsonElement provider,
+        CancellationToken ct,
+        string? sessionId,
+        Func<string, ValueTask>? onSummaryDelta = null)
+    {
+        var model = JsonHelpers.GetString(provider, "model") ?? string.Empty;
+        var apiKey = JsonHelpers.GetString(provider, "apiKey") ?? string.Empty;
+        var baseUrl = (JsonHelpers.GetString(provider, "baseUrl") ?? "https://api.anthropic.com").Trim().TrimEnd('/');
+        var url = $"{baseUrl}/v1/messages";
+
+        var bodyJson = WorkerJsonHelper.BuildJsonString(w =>
+        {
+            w.WriteStartObject();
+            w.WriteString("model", model);
+            w.WriteNumber("max_tokens", SummaryOutputTokens(provider));
+            if (onSummaryDelta is not null)
+                w.WriteBoolean("stream", true);
+            w.WriteString("system", SummarySystemPrompt);
+            w.WritePropertyName("messages");
+            w.WriteStartArray();
+            w.WriteStartObject();
+            w.WriteString("role", "user");
+            w.WriteString("content", transcript);
+            w.WriteEndObject();
+            w.WriteEndArray();
+            w.WriteEndObject();
+        });
+
+        using var request = BuildAnthropicSummaryRequest(url, bodyJson, provider, apiKey);
+
+        using var response = await Http.SendAsync(
+            request,
+            onSummaryDelta is null ? HttpCompletionOption.ResponseContentRead : HttpCompletionOption.ResponseHeadersRead,
+            ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            // S-269: throw the typed exception so the retry loop can see the status code
+            // and the Retry-After header. The old plain InvalidOperationException threw
+            // both away, which is why a 429 with "retry after 29 s" looked exactly like a
+            // dead summarizer.
+            throw await ProviderHttpException.CreateAsync("Anthropic summarization", response, ct);
+        }
+
+        if (onSummaryDelta is null)
+        {
+            var responseJson = await response.Content.ReadAsStringAsync(ct);
+            using var doc = JsonDocument.Parse(responseJson);
+            return string.Join("", doc.RootElement
+                .GetProperty("content")
+                .EnumerateArray()
+                .Where(b => b.GetProperty("type").GetString() == "text")
+                .Select(b => b.GetProperty("text").GetString() ?? ""));
+        }
+
+        var summary = new StringBuilder();
+        await using var responseStream = await response.Content.ReadAsStreamAsync(ct);
+        using var reader = new StreamReader(responseStream, Encoding.UTF8);
+        var dataBuilder = new StringBuilder();
+        var rawResponseBuilder = new StringBuilder();
+        var sawSsePayload = false;
+        string? line;
+        while ((line = await reader.ReadLineAsync(ct)) is not null)
+        {
+            if (line.Length == 0)
+            {
+                if (dataBuilder.Length > 0)
+                {
+                    await AppendAnthropicSummaryDeltaAsync(dataBuilder.ToString(), summary, onSummaryDelta);
+                    dataBuilder.Clear();
+                }
+                continue;
+            }
+
+            if (line.StartsWith("data:", StringComparison.Ordinal))
+            {
+                sawSsePayload = true;
+                if (dataBuilder.Length > 0) dataBuilder.Append('\n');
+                dataBuilder.Append(line[5..].TrimStart());
+            }
+            else if (!line.StartsWith("event:", StringComparison.Ordinal))
+            {
+                if (rawResponseBuilder.Length > 0) rawResponseBuilder.Append('\n');
+                rawResponseBuilder.Append(line);
+            }
+        }
+        if (dataBuilder.Length > 0)
+            await AppendAnthropicSummaryDeltaAsync(dataBuilder.ToString(), summary, onSummaryDelta);
+        if (!sawSsePayload && rawResponseBuilder.Length > 0)
+        {
+            var fallback = ParseAnthropicSummaryResponse(rawResponseBuilder.ToString());
+            if (!string.IsNullOrEmpty(fallback))
+            {
+                summary.Append(fallback);
+                await onSummaryDelta(fallback);
+            }
+        }
+        return summary.ToString();
+    }
+
+    private static string ParseAnthropicSummaryResponse(string responseJson)
+    {
+        using var doc = JsonDocument.Parse(responseJson);
+        return string.Join("", doc.RootElement
+            .GetProperty("content")
+            .EnumerateArray()
+            .Where(b => b.GetProperty("type").GetString() == "text")
+            .Select(b => b.GetProperty("text").GetString() ?? ""));
+    }
+
+    private static async Task AppendAnthropicSummaryDeltaAsync(
+        string data,
+        StringBuilder summary,
+        Func<string, ValueTask> onSummaryDelta)
+    {
+        if (data == "[DONE]") return;
+        using var doc = JsonDocument.Parse(data);
+        var root = doc.RootElement;
+        if (JsonHelpers.GetString(root, "type") != "content_block_delta" ||
+            !root.TryGetProperty("delta", out var delta) ||
+            JsonHelpers.GetString(delta, "type") != "text_delta")
+            return;
+        var text = JsonHelpers.GetString(delta, "text");
+        if (string.IsNullOrEmpty(text)) return;
+        summary.Append(text);
+        await onSummaryDelta(text);
+    }
+
+    /// <summary>
+    /// Calls OpenAI Chat Completions API for summarization (no tools).
+    /// </summary>
+    private static async Task<string> CallOpenAISummary(
+        string transcript,
+        JsonElement provider,
+        CancellationToken ct,
+        string? sessionId,
+        Func<string, ValueTask>? onSummaryDelta = null)
+    {
+        var model = JsonHelpers.GetString(provider, "model") ?? string.Empty;
+        var apiKey = JsonHelpers.GetString(provider, "apiKey") ?? string.Empty;
+        // Mirror OpenAIChatProvider's URL convention: baseUrl already includes
+        // the version segment (default https://api.openai.com/v1), so append
+        // /chat/completions directly — appending another /v1 here produced
+        // .../v1/v1/chat/completions and 404s on versioned gateways (e.g. Gemini's
+        // OpenAI-compatible endpoint), degrading every summary to mechanical fold.
+        var baseUrl = (JsonHelpers.GetString(provider, "baseUrl") ?? "https://api.openai.com/v1").Trim().TrimEnd('/');
+        var url = $"{baseUrl}/chat/completions";
+
+        var bodyJson = WorkerJsonHelper.BuildJsonString(w =>
+        {
+            w.WriteStartObject();
+            w.WriteString("model", model);
+            w.WriteNumber("max_tokens", SummaryOutputTokens(provider));
+            if (onSummaryDelta is not null)
+                w.WriteBoolean("stream", true);
+            w.WritePropertyName("messages");
+            w.WriteStartArray();
+            w.WriteStartObject();
+            w.WriteString("role", "system");
+            w.WriteString("content", SummarySystemPrompt);
+            w.WriteEndObject();
+            w.WriteStartObject();
+            w.WriteString("role", "user");
+            w.WriteString("content", transcript);
+            w.WriteEndObject();
+            w.WriteEndArray();
+            w.WriteEndObject();
+        });
+
+        using var request = BuildOpenAiSummaryRequest(url, bodyJson, provider, apiKey, sessionId);
+
+        using var response = await Http.SendAsync(
+            request,
+            onSummaryDelta is null ? HttpCompletionOption.ResponseContentRead : HttpCompletionOption.ResponseHeadersRead,
+            ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            // S-269: see the Anthropic counterpart — keep the status code and Retry-After.
+            throw await ProviderHttpException.CreateAsync("OpenAI summarization", response, ct);
+        }
+
+        if (onSummaryDelta is null)
+        {
+            var responseJson = await response.Content.ReadAsStringAsync(ct);
+            using var doc = JsonDocument.Parse(responseJson);
+            return doc.RootElement
+                .GetProperty("choices")[0]
+                .GetProperty("message")
+                .GetProperty("content")
+                .GetString() ?? "";
+        }
+
+        var summary = new StringBuilder();
+        await using var responseStream = await response.Content.ReadAsStreamAsync(ct);
+        using var reader = new StreamReader(responseStream, Encoding.UTF8);
+        var dataBuilder = new StringBuilder();
+        var rawResponseBuilder = new StringBuilder();
+        var sawSsePayload = false;
+        string? line;
+        while ((line = await reader.ReadLineAsync(ct)) is not null)
+        {
+            if (line.Length == 0)
+            {
+                if (dataBuilder.Length > 0)
+                {
+                    await AppendOpenAISummaryDeltaAsync(dataBuilder.ToString(), summary, onSummaryDelta);
+                    dataBuilder.Clear();
+                }
+                continue;
+            }
+            if (line.StartsWith("data:", StringComparison.Ordinal))
+            {
+                sawSsePayload = true;
+                if (dataBuilder.Length > 0) dataBuilder.Append('\n');
+                dataBuilder.Append(line[5..].TrimStart());
+            }
+            else if (!line.StartsWith("event:", StringComparison.Ordinal))
+            {
+                if (rawResponseBuilder.Length > 0) rawResponseBuilder.Append('\n');
+                rawResponseBuilder.Append(line);
+            }
+        }
+        if (dataBuilder.Length > 0)
+            await AppendOpenAISummaryDeltaAsync(dataBuilder.ToString(), summary, onSummaryDelta);
+        if (!sawSsePayload && rawResponseBuilder.Length > 0)
+        {
+            var fallback = ParseOpenAISummaryResponse(rawResponseBuilder.ToString());
+            if (!string.IsNullOrEmpty(fallback))
+            {
+                summary.Append(fallback);
+                await onSummaryDelta(fallback);
+            }
+        }
+        return summary.ToString();
+    }
+
+    private static string ParseOpenAISummaryResponse(string responseJson)
+    {
+        using var doc = JsonDocument.Parse(responseJson);
+        return doc.RootElement
+            .GetProperty("choices")[0]
+            .GetProperty("message")
+            .GetProperty("content")
+            .GetString() ?? "";
+    }
+
+    private static async Task AppendOpenAISummaryDeltaAsync(
+        string data,
+        StringBuilder summary,
+        Func<string, ValueTask> onSummaryDelta)
+    {
+        if (data == "[DONE]") return;
+        using var doc = JsonDocument.Parse(data);
+        var root = doc.RootElement;
+        if (!root.TryGetProperty("choices", out var choices) ||
+            choices.ValueKind != JsonValueKind.Array ||
+            choices.GetArrayLength() == 0)
+            return;
+        var choice = choices[0];
+        if (!choice.TryGetProperty("delta", out var delta)) return;
+        var text = JsonHelpers.GetString(delta, "content");
+        if (string.IsNullOrEmpty(text)) return;
+        summary.Append(text);
+        await onSummaryDelta(text);
+    }
+
+    // ── Mechanical fold (fallback) ──
+
+    /// <summary>
+    /// Deterministic stand-in used when the summarizer is unreachable.
+    /// </summary>
+    private static string MechanicalFoldDigest(int messageCount)
+    {
+        return $"{messageCount} earlier message(s) were folded here to free context, " +
+               "but the automatic summary was unavailable. " +
+               "Ask the user if you need details from before this point.";
+    }
+
+}

@@ -280,6 +280,42 @@ public static partial class DbGoalTaskTools
         return entity;
     }
 
+    /// <summary>
+    /// 把一个 Goal 下所有「非终态」的 Task 一次性打成中止态（S-334 / 刀 25，从
+    /// <c>GoalOrchestratorMaterialize.AbortSubtree</c> 搬来，SQL 一字未改）。
+    ///
+    /// 与 <c>DbGoalPlanTools.AbortNonTerminalPlans</c> 的**唯一差别是终态集合**：Task 没有
+    /// <c>superseded</c> 这个状态，所以调用方传三个而不是四个。别为了「统一」把两张表的终态
+    /// 合成一个集合 —— 那样 plans 会漏掉 superseded 被重新打成 aborted，历史被改写。
+    /// </summary>
+    /// <returns>被中止的行数。</returns>
+    public static int AbortNonTerminalTasks(
+        DbService db,
+        string goalId,
+        string sessionId,
+        string abortedStatus,
+        IReadOnlyList<string> terminalStatuses,
+        long nowMs)
+    {
+        var placeholders = string.Join(",", terminalStatuses.Select((_, i) => $"@t{i}"));
+        var sqlParams = new List<SqliteParameter>
+        {
+            DbService.Param("@status", abortedStatus),
+            DbService.Param("@now", nowMs),
+            DbService.Param("@gid", goalId),
+            DbService.Param("@sid", sessionId)
+        };
+        for (var i = 0; i < terminalStatuses.Count; i++)
+        {
+            sqlParams.Add(DbService.Param($"@t{i}", terminalStatuses[i]));
+        }
+
+        return db.Execute(
+            "UPDATE goal_tasks SET status = @status, updated_at = @now, completed_at = @now " +
+            $"WHERE goal_id = @gid AND session_id = @sid AND status NOT IN ({placeholders})",
+            sqlParams.ToArray());
+    }
+
     private static string? GetString(JsonElement parameters, string name)
     {
         return parameters.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String

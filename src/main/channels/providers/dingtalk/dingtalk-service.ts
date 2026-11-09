@@ -20,6 +20,7 @@ import type {
 import { BasePluginService } from '../../base-plugin-service'
 import { DingTalkApi } from './dingtalk-api'
 import { resolveDingTalkIncomingContent } from './parse-message'
+import { logDebug, logInfo } from '../../../lib/logger'
 
 interface WebhookEntry {
   url: string
@@ -78,7 +79,7 @@ export class DingTalkService extends BasePluginService {
       if (Date.now() >= webhook.expiredTime) continue
       try {
         await this.postWebhook(webhook.url, content)
-        console.log(`[DingTalk] Reply delivered via cached webhook for chat ${chatId}`)
+        logInfo('main', `[DingTalk] Reply delivered via cached webhook for chat ${chatId}`)
         return { messageId: '' }
       } catch (err) {
         console.warn(`[DingTalk] Cached webhook reply failed for chat ${chatId}:`, err)
@@ -131,7 +132,7 @@ export class DingTalkService extends BasePluginService {
     // Connect the stream
     try {
       await this.client.connect()
-      console.log(`[DingTalk] Stream connected for plugin ${this.pluginId}`)
+      logInfo('main', `[DingTalk] Stream connected for plugin ${this.pluginId}`)
     } catch (err) {
       console.error('[DingTalk] Failed to connect stream:', err)
       this.emit({
@@ -175,7 +176,7 @@ export class DingTalkService extends BasePluginService {
 
     // Filter stale messages (> 15 minutes old)
     if (Date.now() - timestamp > 15 * 60 * 1000) {
-      console.log(`[DingTalk] Ignoring stale message from ${new Date(timestamp).toISOString()}`)
+      logDebug('main', `[DingTalk] Ignoring stale message from ${new Date(timestamp).toISOString()}`)
       return
     }
 
@@ -188,7 +189,8 @@ export class DingTalkService extends BasePluginService {
       : 0
     if (sessionWebhook && sessionWebhookExpiredTime) {
       this.webhookCache.set(chatId, { url: sessionWebhook, expiredTime: sessionWebhookExpiredTime })
-      console.log(
+      logInfo(
+        'main',
         `[DingTalk] Cached sessionWebhook for chat ${chatId} (expires ${new Date(sessionWebhookExpiredTime).toISOString()})`
       )
     }
@@ -247,7 +249,7 @@ export class DingTalkService extends BasePluginService {
           })
           res.on('end', () => {
             if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-              console.log(`[DingTalk] Webhook reply sent successfully`)
+              logInfo('main', `[DingTalk] Webhook reply sent successfully`)
               resolve()
             } else {
               reject(new Error(`Webhook POST failed: ${res.statusCode} ${responseBody}`))
@@ -357,7 +359,7 @@ export class DingTalkService extends BasePluginService {
       key: streamKey
     })
 
-    console.log(`[DingTalk] Created streaming card ${outTrackId} in space ${openSpaceId}`)
+    logDebug('main', `[DingTalk] Created streaming card ${outTrackId} in space ${openSpaceId}`)
 
     let lastUpdateTime = 0
 
@@ -384,7 +386,7 @@ export class DingTalkService extends BasePluginService {
           isFull: true,
           isFinalize: true
         })
-        console.log(`[DingTalk] Finalized streaming card ${outTrackId}`)
+        logDebug('main', `[DingTalk] Finalized streaming card ${outTrackId}`)
       }
     }
 

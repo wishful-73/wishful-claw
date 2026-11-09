@@ -1,6 +1,7 @@
 // Goal 回归：use_capability 目标与方法发现套件、执行辅助。
 // 拆分自原单文件 Program.Lifecycle.cs（S-252，2026-10-28），方法体逐字平移。
 using System.Text.Json;
+using WishfulClaw.Agent.Executors;
 using WishfulClaw.Agent;
 using WishfulClaw.Agent.Tools.Providers;
 using WishfulClaw.Contracts;

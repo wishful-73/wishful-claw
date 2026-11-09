@@ -238,7 +238,7 @@ function SubAgentCardInner({
     useShallow((s) => {
       const scoped = sessionId
         ? findSubAgentInSelection(
-            selectSessionScopedAgentState(s, sessionId, { mode: 'coarse' }),
+            selectSessionScopedAgentState(s, sessionId),
             toolUseId
           )
         : null

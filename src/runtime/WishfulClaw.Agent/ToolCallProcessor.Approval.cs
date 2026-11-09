@@ -1,6 +1,7 @@
 using System.Text.Json;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Storage;
+using WishfulClaw.Agent.Executors;
 
 namespace WishfulClaw.Agent;
 

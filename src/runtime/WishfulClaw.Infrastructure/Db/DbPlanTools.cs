@@ -38,8 +38,7 @@ public static class DbPlanTools
             if (string.IsNullOrEmpty(id))
                 return WorkerResponse.Json(new PlanFindResult(false, null, "id is required"), InfrastructureJsonContext.Default.PlanFindResult);
 
-            var entity = db.QueryFirstOrDefault("SELECT * FROM plans WHERE id = @id", EntityMappers.MapPlan,
-                new SqliteParameter("@id", id));
+            var entity = DbPlanStore.GetById(db, id);
             var row = entity != null ? PlanRow.FromEntity(entity) : null;
             return WorkerResponse.Json(new PlanFindResult(true, row, null), InfrastructureJsonContext.Default.PlanFindResult);
         }
@@ -56,9 +55,7 @@ public static class DbPlanTools
             if (string.IsNullOrEmpty(sessionId))
                 return WorkerResponse.Json(new PlanFindResult(false, null, "sessionId is required"), InfrastructureJsonContext.Default.PlanFindResult);
 
-            var entity = db.QueryFirstOrDefault(
-                "SELECT * FROM plans WHERE session_id = @sid ORDER BY updated_at DESC LIMIT 1",
-                EntityMappers.MapPlan, new SqliteParameter("@sid", sessionId));
+            var entity = DbPlanStore.GetLatestBySession(db, sessionId);
             var row = entity != null ? PlanRow.FromEntity(entity) : null;
             return WorkerResponse.Json(new PlanFindResult(true, row, null), InfrastructureJsonContext.Default.PlanFindResult);
         }
@@ -73,18 +70,8 @@ public static class DbPlanTools
             var db = DbClient.GetClient(parameters);
             var entity = ParseCreateParameters(parameters);
 
-            db.Execute(
-                "INSERT INTO plans (id, session_id, title, status, file_path, content, spec_json, created_at, updated_at) " +
-                "VALUES (@id, @sid, @title, @status, @fp, @content, @spec, @ca, @ua)",
-                new SqliteParameter("@id", entity.Id),
-                new SqliteParameter("@sid", entity.SessionId),
-                new SqliteParameter("@title", entity.Title),
-                new SqliteParameter("@status", entity.Status),
-                new SqliteParameter("@fp", (object?)entity.FilePath ?? DBNull.Value),
-                new SqliteParameter("@content", (object?)entity.Content ?? DBNull.Value),
-                new SqliteParameter("@spec", (object?)entity.SpecJson ?? DBNull.Value),
-                new SqliteParameter("@ca", entity.CreatedAt),
-                new SqliteParameter("@ua", entity.UpdatedAt));
+            // 9 列 + NULL 处理全在 DbPlanStore.Insert（S-336 薄化）；这里只摊参数。
+            DbPlanStore.Insert(db, entity);
 
             return WorkerResponse.Json(new PlanMutationResult(true, 1, null), InfrastructureJsonContext.Default.PlanMutationResult);
         }
@@ -147,7 +134,7 @@ public static class DbPlanTools
             if (string.IsNullOrEmpty(id))
                 return WorkerResponse.Json(new PlanMutationResult(false, 0, "id is required"), InfrastructureJsonContext.Default.PlanMutationResult);
 
-            var changed = db.Execute("DELETE FROM plans WHERE id = @id", new SqliteParameter("@id", id));
+            var changed = DbPlanStore.DeleteById(db, id);
             return WorkerResponse.Json(new PlanMutationResult(true, changed, null), InfrastructureJsonContext.Default.PlanMutationResult);
         }
         catch (Exception ex) { WorkerLog.Error($"DbPlanTools.Delete failed: {ex.Message}"); return WorkerResponse.Error(ex.Message); }

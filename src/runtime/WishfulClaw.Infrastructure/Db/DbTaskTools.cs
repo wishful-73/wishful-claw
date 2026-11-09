@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -72,25 +72,24 @@ public static class DbTaskTools
             var db = DbClient.GetClient(parameters);
 
             var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            var changed = db.Execute(
-                "INSERT INTO tasks (id, session_id, plan_id, subject, description, active_form, status, owner, " +
-                "blocks, blocked_by, metadata, sort_order, created_at, updated_at) VALUES " +
-                "(@id, @sid, @pid, @subject, @description, @activeForm, @status, @owner, " +
-                "@blocks, @blockedBy, @metadata, @sortOrder, @createdAt, @updatedAt)",
-                new SqliteParameter("@id", id),
-                new SqliteParameter("@sid", sessionId),
-                new SqliteParameter("@pid", (object?)GetString(parameters, "planId") ?? DBNull.Value),
-                new SqliteParameter("@subject", subject),
-                new SqliteParameter("@description", GetString(parameters, "description") ?? ""),
-                new SqliteParameter("@activeForm", (object?)GetString(parameters, "activeForm") ?? DBNull.Value),
-                new SqliteParameter("@status", GetString(parameters, "status") ?? "pending"),
-                new SqliteParameter("@owner", (object?)GetString(parameters, "owner") ?? DBNull.Value),
-                new SqliteParameter("@blocks", RawArrayText(parameters, "blocks")),
-                new SqliteParameter("@blockedBy", RawArrayText(parameters, "blockedBy")),
-                new SqliteParameter("@metadata", (object?)RawObjectText(parameters, "metadata") ?? DBNull.Value),
-                new SqliteParameter("@sortOrder", GetInt(parameters, "sortOrder")),
-                new SqliteParameter("@createdAt", GetLong(parameters, "createdAt", now)),
-                new SqliteParameter("@updatedAt", GetLong(parameters, "updatedAt", now)));
+            // 列清单与参数全在 DbTaskStore.Insert（S-336 薄化）：这里只负责把端点 JSON 摊成实体。
+            var changed = DbTaskStore.Insert(db, new TaskEntity
+            {
+                Id = id,
+                SessionId = sessionId,
+                PlanId = GetString(parameters, "planId"),
+                Subject = subject,
+                Description = GetString(parameters, "description") ?? "",
+                ActiveForm = GetString(parameters, "activeForm"),
+                Status = GetString(parameters, "status") ?? "pending",
+                Owner = GetString(parameters, "owner"),
+                Blocks = RawArrayText(parameters, "blocks"),
+                BlockedBy = RawArrayText(parameters, "blockedBy"),
+                Metadata = RawObjectText(parameters, "metadata"),
+                SortOrder = GetInt(parameters, "sortOrder"),
+                CreatedAt = GetLong(parameters, "createdAt", now),
+                UpdatedAt = GetLong(parameters, "updatedAt", now),
+            });
 
             return WorkerResponse.Json(new TaskMutationResult(true, changed, null), InfrastructureJsonContext.Default.TaskMutationResult);
         }
@@ -108,6 +107,8 @@ public static class DbTaskTools
             DbClient.EnsureInitialized(parameters);
             var db = DbClient.GetClient(parameters);
 
+            // 端点按 id 改（入参没有 sessionId），而 DbTaskStore.GetById 强制带 session 过滤
+            // —— 这是有意差异，不合并。UPDATE 那一句交给 DbTaskStore.UpdateRow。
             var entity = db.QueryFirstOrDefault($"{TaskSelect} WHERE id = @id", EntityMappers.MapTask,
                 new SqliteParameter("@id", id));
             if (entity == null)
@@ -118,20 +119,7 @@ public static class DbTaskTools
                 ApplyPatch(entity, patch);
             }
 
-            var changed = db.Execute(
-                "UPDATE tasks SET subject = @subject, description = @description, active_form = @activeForm, " +
-                "status = @status, owner = @owner, blocks = @blocks, blocked_by = @blockedBy, " +
-                "metadata = @metadata, updated_at = @ua WHERE id = @id",
-                new SqliteParameter("@subject", entity.Subject),
-                new SqliteParameter("@description", entity.Description),
-                new SqliteParameter("@activeForm", (object?)entity.ActiveForm ?? DBNull.Value),
-                new SqliteParameter("@status", entity.Status),
-                new SqliteParameter("@owner", (object?)entity.Owner ?? DBNull.Value),
-                new SqliteParameter("@blocks", entity.Blocks),
-                new SqliteParameter("@blockedBy", entity.BlockedBy),
-                new SqliteParameter("@metadata", (object?)entity.Metadata ?? DBNull.Value),
-                new SqliteParameter("@ua", entity.UpdatedAt),
-                new SqliteParameter("@id", id));
+            var changed = DbTaskStore.UpdateRow(db, entity);
 
             return WorkerResponse.Json(new TaskMutationResult(true, changed, null), InfrastructureJsonContext.Default.TaskMutationResult);
         }
@@ -158,11 +146,7 @@ public static class DbTaskTools
                     "claimed_at = NULL, updated_at = @now WHERE todo_id = @id AND status IN ('waiting', 'triggered')",
                     new SqliteParameter("@now", now),
                     new SqliteParameter("@id", id));
-                return db.Execute(
-                    connection,
-                    transaction,
-                    "DELETE FROM tasks WHERE id = @id",
-                    new SqliteParameter("@id", id));
+                return DbTaskStore.DeleteById(db, connection, transaction, id);
             });
             return WorkerResponse.Json(new TaskMutationResult(true, changed, null), InfrastructureJsonContext.Default.TaskMutationResult);
         }
@@ -189,11 +173,7 @@ public static class DbTaskTools
                     "claimed_at = NULL, updated_at = @now WHERE source_session_id = @sid AND status IN ('waiting', 'triggered')",
                     new SqliteParameter("@now", now),
                     new SqliteParameter("@sid", sessionId));
-                return db.Execute(
-                    connection,
-                    transaction,
-                    "DELETE FROM tasks WHERE session_id = @sid",
-                    new SqliteParameter("@sid", sessionId));
+                return DbTaskStore.DeleteBySession(db, connection, transaction, sessionId);
             });
             return WorkerResponse.Json(new TaskMutationResult(true, changed, null), InfrastructureJsonContext.Default.TaskMutationResult);
         }

@@ -9,6 +9,7 @@ using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using WishfulClaw.Agent.Executors;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Agent;
 

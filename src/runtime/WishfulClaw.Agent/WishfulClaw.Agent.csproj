@@ -34,6 +34,8 @@
     <InternalsVisibleTo Include="WishfulClaw.CaptureTargetPathRegressionTests" />
     <InternalsVisibleTo Include="WishfulClaw.SessionMessageWireRegressionTests" />
     <InternalsVisibleTo Include="WishfulClaw.ToolTimeoutRegressionTests" />
+    <InternalsVisibleTo Include="WishfulClaw.RequestDebugTrimRegressionTests" />
+    <InternalsVisibleTo Include="WishfulClaw.SessionEvictionRegressionTests" />
   </ItemGroup>
 
 </Project>

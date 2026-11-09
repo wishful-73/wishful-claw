@@ -1,3 +1,9 @@
+// 500 行豁免（2026-11-06，行数以实际为准）：单一数据对象 —— 手写 DDL 清单
+// （CREATE TABLE / 索引 / FTS5 虚表 / 同步触发器）。内容全是「建表顺序 + 字段定义」，
+// 拆开会让「一张表完整的建法」散落在多个文件里，排查 schema 问题反而要来回跳。
+// DDL 本体是 2026-10-28 按 AGENTS.md 大文件拆分要求从 `DbClient.Initialize` 原样搬出的，
+// 未做任何改写；搬的时候就是为了「一屏看完整个 schema」。
+
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Core.Protocol;

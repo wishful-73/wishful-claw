@@ -1,12 +1,12 @@
 // 500 行豁免（2026-10-28，行数以实际为准）：30 余个 `export type` / `export interface` 的纯类型声明表，
-// 覆盖 provider 预设、OAuth 契约、渠道、模型配置、回退链，全是同质声明、无逻辑；
+// 覆盖 provider 预设、渠道、模型配置、回退链，全是同质声明、无逻辑；
 // 拆开只会让「某个字段属于哪个类型」变成翻文件。豁免依据：AGENTS.md §大文件拆分 第 5 条第 1 类（单一数据对象 / 同质数据）。
 
 /**
  * Provider core type definitions.
  * Shared between renderer, preload, and main process.
  *
- * Aligned with WishfulClaw's type system — API Key mode only (no OAuth/channel).
+ * Aligned with WishfulClaw's type system — API Key and channel auth only.
  * All request-protocol, caching, compression, and tool-capability fields preserved.
  */
 
@@ -28,7 +28,7 @@ export type ResponseSummary = 'auto' | 'concise' | 'detailed'
 
 export type ServiceTier = 'auto' | 'default' | 'flex' | 'priority'
 
-export type AuthMode = 'apiKey' | 'oauth' | 'channel'
+export type AuthMode = 'apiKey' | 'channel'
 
 export type ReasoningEffortLevel =
   | 'none'
@@ -101,137 +101,6 @@ export interface RequestOverrides {
   body?: Record<string, unknown>
   /** Body keys to omit from the final payload */
   omitBodyKeys?: string[]
-}
-
-// ─── Provider UI Config ───
-
-export interface ProviderUiConfig {
-  /** Hide OAuth settings fields and related hints in the UI */
-  hideOAuthSettings?: boolean
-}
-
-// ─── OAuth ───
-
-export type OAuthFlowType = 'authorization_code' | 'device_code' | 'server_poll'
-export type OAuthRequestMode = 'form' | 'json'
-
-export interface OAuthConfig {
-  /** authorization_code flow only; server_poll mints its URL via {@link stateUrl} */
-  authorizeUrl?: string
-  tokenUrl?: string
-  /** authorization_code / device_code only; server_poll signs in without a client registration */
-  clientId?: string
-  clientIdLocked?: boolean
-  scope?: string
-  flowType?: OAuthFlowType
-  /** Base GitHub / OAuth host, used to derive endpoints when individual URLs are not overridden */
-  host?: string
-  /** API host used for token exchange endpoints (e.g. https://api.github.com or GHE api/v3) */
-  apiHost?: string
-  /** Device code endpoint for OAuth device flow */
-  deviceCodeUrl?: string
-  /** Copilot / provider-specific token exchange endpoint used after OAuth login */
-  tokenExchangeUrl?: string
-  /** Use system proxy for OAuth token exchanges */
-  useSystemProxy?: boolean
-  includeScopeInTokenRequest?: boolean
-  tokenRequestMode?: OAuthRequestMode
-  tokenRequestHeaders?: Record<string, string>
-  refreshRequestMode?: OAuthRequestMode
-  refreshRequestHeaders?: Record<string, string>
-  refreshScope?: string
-  deviceCodeRequestMode?: OAuthRequestMode
-  deviceCodeRequestHeaders?: Record<string, string>
-  redirectPath?: string
-  redirectPort?: number
-  extraParams?: Record<string, string>
-  usePkce?: boolean
-
-  // ─── server_poll flow ───
-  // The provider mints a state + sign-in URL server-side, the user signs in in a
-  // browser, and we poll for a token and then for the account. No redirect URI,
-  // no client registration, no PKCE.
-
-  /** POST endpoint that answers `{ state, authUrl }` */
-  stateUrl?: string
-  /** Polled for the account once the token lands */
-  accountUrl?: string
-  /** Refresh endpoint for server_poll tokens; absent means the sign-in cannot be renewed */
-  refreshUrl?: string
-  /** Account list endpoint, used to pick the enterprise id for a non-personal account */
-  accountsUrl?: string
-  /** Platform value sent as the `platform` query of {@link stateUrl} */
-  platform?: string
-  /** Poll interval in ms; defaults to 1000 */
-  pollIntervalMs?: number
-  /** Overall sign-in timeout in ms; defaults to 300000 (5 min) */
-  pollTimeoutMs?: number
-  /** Extra query params appended to {@link stateUrl} */
-  stateQuery?: Record<string, string>
-  /** Headers sent with the `state` mint request (e.g. the provider's X-No-* suppressors) */
-  stateRequestHeaders?: Record<string, string>
-}
-
-export interface OAuthToken {
-  accessToken: string
-  refreshToken?: string
-  expiresAt?: number
-  scope?: string
-  tokenType?: string
-  accountId?: string
-  idToken?: string
-  deviceId?: string
-  copilotAccessToken?: string
-  copilotTokenType?: string
-  copilotExpiresAt?: number
-  copilotRefreshAt?: number
-  copilotApiUrl?: string
-  copilotChatEnabled?: boolean
-  copilotSku?: string
-  copilotTelemetry?: string
-
-  // ─── WorkBuddy server_poll flow ───
-  // The plugin API signs every request with the account's own uid, domain and
-  // enterprise; they arrive with the sign-in and have to survive in storage.
-
-  /** Account uid, sent as `X-User-Id` */
-  uid?: string
-  /** Enterprise (team) id, sent as `X-Enterprise-Id` and `X-Tenant-Id`. Empty for a personal account. */
-  enterpriseId?: string
-  /** Account-bound API domain, sent as `X-Domain` */
-  domain?: string
-  /**
-   * Daily check-in runs on its own while the app is open. Default on —
-   * only an explicit `false` turns it off.
-   */
-  autoCheckin?: boolean
-}
-
-export interface AccountRateLimit {
-  /** When the rate-limit was first observed (epoch ms) */
-  limitedAt: number
-  /** When the rate-limit window is expected to reset (epoch ms). Accounts auto-revive once now >= resetAt. */
-  resetAt: number
-  /** Origin of the rate-limit marker */
-  reason: 'http-429' | 'codex-quota'
-  /** For Codex quota markers, which window saturated */
-  windowType?: 'primary' | 'secondary'
-  /** Human-readable detail (shown in UI tooltip) */
-  message?: string
-}
-
-export interface ProviderOAuthAccount {
-  /** Stable UUID used as the account key */
-  id: string
-  /** Required — primary display label and dedup key on import */
-  email: string
-  /** Optional user-friendly nickname */
-  label?: string
-  oauth: OAuthToken
-  /** Set when the account is temporarily rate-limited; cleared once resetAt elapses */
-  rateLimit?: AccountRateLimit
-  createdAt: number
-  lastUsedAt?: number
 }
 
 // ─── Channel Auth ───
@@ -385,14 +254,6 @@ export interface AIProvider {
   defaultModel?: string
   /** Authentication mode for this provider */
   authMode?: AuthMode
-  /** OAuth token payload (if authMode === 'oauth') */
-  oauth?: OAuthToken
-  /** Multi-account list. Priority order = array order. First entry is the default. */
-  oauthAccounts?: ProviderOAuthAccount[]
-  /** Currently selected account id. Falls back to the first usable entry in oauthAccounts. */
-  activeAccountId?: string
-  /** OAuth configuration for this provider */
-  oauthConfig?: OAuthConfig
   /** Channel auth data (if authMode === 'channel') */
   channel?: ChannelAuth
   /** Channel auth configuration */
@@ -401,8 +262,6 @@ export interface AIProvider {
   requestOverrides?: RequestOverrides
   /** Optional prompt name to use for Responses instructions */
   instructionsPrompt?: string
-  /** Optional UI configuration for this provider */
-  ui?: ProviderUiConfig
   /** OpenAI Responses WebSocket endpoint override for this provider */
   websocketUrl?: string
   /** OpenAI Responses transport mode for this provider */
@@ -482,16 +341,12 @@ export interface BuiltinProviderPreset {
   defaultModel?: string
   /** Authentication mode for this provider */
   authMode?: AuthMode
-  /** OAuth configuration (when authMode === 'oauth') */
-  oauthConfig?: OAuthConfig
   /** Channel auth configuration (when authMode === 'channel') */
   channelConfig?: ChannelConfig
   /** Optional request overrides (headers/body) for this provider */
   requestOverrides?: RequestOverrides
   /** Optional prompt name to use for Responses instructions */
   instructionsPrompt?: string
-  /** Optional UI configuration for this provider */
-  ui?: ProviderUiConfig
   /** OpenAI Responses WebSocket endpoint override for this provider preset */
   websocketUrl?: string
   /** OpenAI Responses transport mode for this provider preset; unset means disabled (opt-in) */

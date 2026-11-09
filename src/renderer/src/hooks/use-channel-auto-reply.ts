@@ -370,7 +370,6 @@ function enqueueChannelReply(autoReply: ActiveAutoReply, content: string): void 
         params: { chatId: autoReply.chatId, content: text }
       })
       autoReply.successfulReplyCount += 1
-      console.log(`[ChannelAutoReply] Reply sent to ${autoReply.chatId} (${text.length} chars)`)
     } catch (err) {
       autoReply.failedReplyCount += 1
       console.error('[ChannelAutoReply] Failed to send reply:', err)
@@ -549,10 +548,6 @@ export function useChannelAutoReply(): void {
     const unsubTask = ipcClient.on('plugin:session-task', (...args: unknown[]) => {
       const task = args[0] as SessionTaskPayload
       if (!task?.sessionId) return
-      console.log(
-        `[ChannelAutoReply] Received task: session=${task.sessionId}, ` +
-        `plugin=${task.pluginId}, chat=${task.chatId}`
-      )
       void processChannelTask(task)
     })
 

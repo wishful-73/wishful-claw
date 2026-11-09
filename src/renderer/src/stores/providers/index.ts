@@ -8,7 +8,7 @@ import { ollamaPreset } from '@renderer/stores/providers/ollama'
 import { azureOpenaiPreset } from '@renderer/stores/providers/azure-openai'
 import { googlePreset } from '@renderer/stores/providers/google'
 import { longcatPreset } from '@renderer/stores/providers/longcat'
-import { moonshotPreset, moonshotCodingPreset } from '@renderer/stores/providers/moonshot'
+import { moonshotPreset } from '@renderer/stores/providers/moonshot'
 import { qwenPreset, qwenCodingPreset } from '@renderer/stores/providers/qwen'
 import { minimaxPreset, minimaxCodingPreset } from '@renderer/stores/providers/minimax'
 import { baiduPreset, baiduCodingPreset } from '@renderer/stores/providers/baidu'
@@ -35,9 +35,6 @@ import { opencodeGoPreset } from '@renderer/stores/providers/opencode-go'
 import { ppioPreset } from '@renderer/stores/providers/ppio'
 import { stepfunPreset, stepfunPlanPreset } from '@renderer/stores/providers/stepfun'
 import { togetherPreset } from '@renderer/stores/providers/together'
-import { codexOAuthPreset } from '@renderer/stores/providers/codex-oauth'
-import { copilotOAuthPreset } from '@renderer/stores/providers/copilot-oauth'
-import { workbuddyPreset, workbuddyAiPreset } from '@renderer/stores/providers/workbuddy'
 import { sensenovaPreset } from '@renderer/stores/providers/sensenova'
 import { agnesPreset } from '@renderer/stores/providers/agnes'
 import type { BuiltinProviderPreset } from '@renderer/stores/providers/types'
@@ -51,7 +48,6 @@ export const builtinProviderPresets: BuiltinProviderPreset[] = [
   ollamaPreset,
   azureOpenaiPreset,
   longcatPreset,
-  moonshotCodingPreset,
   moonshotPreset,
   qwenCodingPreset,
   qwenPreset,
@@ -86,9 +82,5 @@ export const builtinProviderPresets: BuiltinProviderPreset[] = [
   stepfunPlanPreset,
   togetherPreset,
   sensenovaPreset,
-  agnesPreset,
-  codexOAuthPreset,
-  copilotOAuthPreset,
-  workbuddyPreset,
-  workbuddyAiPreset
+  agnesPreset
 ]

@@ -13,7 +13,6 @@ export const IPC = {
   APP_GLOBAL_MEMORY_HOME: 'app:global-memory-home',
 
   // API events
-  API_QUOTA_UPDATE: 'api:quota-update',
   API_ACCOUNT_RATE_LIMITED: 'api:account-rate-limited',
 
   // File System

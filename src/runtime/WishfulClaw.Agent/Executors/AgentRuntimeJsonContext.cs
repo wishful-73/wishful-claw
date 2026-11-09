@@ -1,0 +1,70 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using WishfulClaw.Agent.Llm;
+using WishfulClaw.Agent.Results;
+using WishfulClaw.Contracts;
+using WishfulClaw.Agent.Modules.Git;
+using WishfulClaw.Agent.Modules.Extensions;
+using WishfulClaw.Agent.Modules.Channels;
+using WishfulClaw.Infrastructure.Storage;
+
+namespace WishfulClaw.Agent.Executors;
+
+/// <summary>
+/// Source-generated JsonSerializerContext for AgentRuntime types.
+/// </summary>
+[JsonSourceGenerationOptions(
+    GenerationMode = JsonSourceGenerationMode.Metadata,
+    PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
+    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
+[JsonSerializable(typeof(GoalPlanItem))]
+[JsonSerializable(typeof(List<GoalPlanItem>))]
+[JsonSerializable(typeof(GoalToolGoal))]
+[JsonSerializable(typeof(GoalToolProgress))]
+[JsonSerializable(typeof(GoalToolResult))]
+[JsonSerializable(typeof(GoalToolEvent))]
+[JsonSerializable(typeof(List<GoalToolEvent>))]
+[JsonSerializable(typeof(GoalToolPageResult))]
+[JsonSerializable(typeof(GoalToolHistoryResult))]
+[JsonSerializable(typeof(GoalActionResult))]
+[JsonSerializable(typeof(GoalRunStateChanged))]
+[JsonSerializable(typeof(GoalProgressErrorPayload))]
+[JsonSerializable(typeof(AgentRuntimeReverseRequestEnvelope))]
+[JsonSerializable(typeof(AgentRuntimeCompressionDeltaEnvelope))]
+[JsonSerializable(typeof(AgentRuntimeReverseCancelEnvelope))]
+[JsonSerializable(typeof(AgentRuntimeReverseResponseResult))]
+[JsonSerializable(typeof(AgentRuntimeRunResult))]
+[JsonSerializable(typeof(AgentRuntimeCancelResult))]
+[JsonSerializable(typeof(AgentRuntimeStopResult))]
+[JsonSerializable(typeof(AgentRuntimeAppendMessagesResult))]
+[JsonSerializable(typeof(AgentRuntimeDrainResult))]
+[JsonSerializable(typeof(ClearSessionResult))]
+[JsonSerializable(typeof(ProviderTestResult))]
+[JsonSerializable(typeof(ProviderTestModelsResult))]
+[JsonSerializable(typeof(ProviderModelInfo))]
+[JsonSerializable(typeof(List<ProviderModelInfo>))]
+[JsonSerializable(typeof(ProviderCompletionResult))]
+[JsonSerializable(typeof(ProviderCompletionSettings))]
+[JsonSerializable(typeof(ProviderCompletionSettingsResult))]
+[JsonSerializable(typeof(ProviderCompletionToolCall))]
+[JsonSerializable(typeof(List<ProviderCompletionToolCall>))]
+[JsonSerializable(typeof(GlobalChannelSettings))]
+[JsonSerializable(typeof(GlobalChannelSettingsResult))]
+[JsonSerializable(typeof(SessionRestoreResponse))]
+[JsonSerializable(typeof(SessionRestoreFailure))]
+[JsonSerializable(typeof(GitExecResult))]
+[JsonSerializable(typeof(GitStatusDetailedResult))]
+[JsonSerializable(typeof(GitQueryResult))]
+[JsonSerializable(typeof(GitCommitGraphItem))]
+[JsonSerializable(typeof(List<GitCommitGraphItem>))]
+[JsonSerializable(typeof(GitRepositorySummary))]
+[JsonSerializable(typeof(List<GitRepositorySummary>))]
+[JsonSerializable(typeof(NativeExtensionToolExecutionResult))]
+[JsonSerializable(typeof(ContextCompressionResponse))]
+[JsonSerializable(typeof(ContextCompressionResult))]
+[JsonSerializable(typeof(GlobalBoardTaskChangedEvent))]
+[JsonSerializable(typeof(GlobalBoardDispatchChangedEvent))]
+[JsonSerializable(typeof(List<JsonElement>))]
+public sealed partial class AgentRuntimeJsonContext : JsonSerializerContext
+{
+}

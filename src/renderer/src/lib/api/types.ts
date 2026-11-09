@@ -36,21 +36,9 @@ export type {
   AIModelConfig,
   AIProvider,
   BuiltinProviderPreset,
-  OAuthToken,
-  OAuthConfig,
-  ProviderOAuthAccount,
   ChannelAuth,
   ChannelConfig,
-  RequestOverrides,
-  ProviderUiConfig
-} from '@shared/types/provider'
-
-// Also re-export for convenience
-export type {
-  ImageGenerationStreamConfig,
-  OAuthFlowType,
-  OAuthRequestMode,
-  AccountRateLimit
+  RequestOverrides
 } from '@shared/types/provider'
 
 // --- Token Usage ---

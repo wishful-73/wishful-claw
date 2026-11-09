@@ -16,6 +16,7 @@ import type {
   ChannelIncomingMessageData
 } from '../../channel-types'
 import { FeishuApi } from './feishu-api'
+import { logDebug, logInfo } from '../../../lib/logger'
 
 /** Throttle interval for card updates (ms) */
 const STREAM_THROTTLE_MS = 500
@@ -110,7 +111,7 @@ export class FeishuService implements MessagingChannelService {
       const botInfo = await this.api.getBotInfo()
       this._botOpenId = botInfo.openId
       this._botName = botInfo.appName.trim()
-      console.log(`[Feishu] Bot identity: ${botInfo.appName} (${botInfo.openId})`)
+      logInfo('main', `[Feishu] Bot identity: ${botInfo.appName} (${botInfo.openId})`)
     } catch (err) {
       console.warn(
         '[Feishu] Failed to fetch bot info, group @mention detection may be unreliable:',
@@ -172,7 +173,7 @@ export class FeishuService implements MessagingChannelService {
 
             // Dedup: skip if we've already processed this message
             if (messageId && this._processedMsgIds.has(messageId)) {
-              console.log(`[Feishu] Skipping duplicate message ${messageId}`)
+              logInfo('main', `[Feishu] Skipping duplicate message ${messageId}`)
               return
             }
             this._processedMsgIds.add(messageId)
@@ -199,7 +200,8 @@ export class FeishuService implements MessagingChannelService {
                     'image'
                   )
                   images = [{ base64: buf.toString('base64'), mediaType: 'image/png' }]
-                  console.log(
+                  logDebug(
+                    'main',
                     `[Feishu] Downloaded image ${parsed.image_key} (${buf.byteLength} bytes)`
                   )
                 } catch (err) {
@@ -232,7 +234,8 @@ export class FeishuService implements MessagingChannelService {
 
             if (!chatId || (!content && !images && !audio)) return
 
-            console.log(
+            logDebug(
+              'main',
               `[Feishu] ${msgType} [${chatType}] in ${chatId}: ${content.slice(0, 60)}${images ? ` [+${images.length} image(s)]` : ''}${audio ? ' [audio]' : ''}`
             )
 
@@ -295,7 +298,7 @@ export class FeishuService implements MessagingChannelService {
       pluginType: this.pluginType,
       data: 'running'
     })
-    console.log(`[Feishu] Started for plugin ${this.pluginId}`)
+    logInfo('main', `[Feishu] Started for plugin ${this.pluginId}`)
   }
 
   async stop(): Promise<void> {
@@ -308,7 +311,7 @@ export class FeishuService implements MessagingChannelService {
       }
       this.wsClient = null
     }
-    console.log(`[Feishu] Stopped plugin ${this.pluginId}`)
+    logInfo('main', `[Feishu] Stopped plugin ${this.pluginId}`)
   }
 
   isRunning(): boolean {

@@ -110,16 +110,32 @@ export function resolveSessionModelSelection({
       session.providerId,
       session.modelId
     )
+    // S-318：会话绑定的服务商可能已被移除（公开面剔除 preset 的记录不进列表）。
+    // 不回落的话这条会话每次发消息都拿不到 provider，模型选择器也只显示空名。
+    if (provider && model) {
+      return {
+        mode,
+        effectiveMode: 'manual',
+        source: 'session',
+        providerId: session.providerId,
+        modelId: session.modelId,
+        provider,
+        model,
+        isAutoModeActive: false,
+        isSessionBound: true
+      }
+    }
+    const fallback = resolveProviderAndModel(providers, activeProviderId, activeModelId)
     return {
       mode,
       effectiveMode: 'manual',
-      source: 'session',
-      providerId: session.providerId,
-      modelId: session.modelId,
-      provider,
-      model,
+      source: 'global',
+      providerId: activeProviderId,
+      modelId: activeModelId || null,
+      provider: fallback.provider,
+      model: fallback.model,
       isAutoModeActive: false,
-      isSessionBound: true
+      isSessionBound: false
     }
   }
 

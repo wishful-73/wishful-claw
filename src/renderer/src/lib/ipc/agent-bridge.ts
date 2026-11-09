@@ -142,7 +142,6 @@ export const agentBridge = new AgentBridgeClient()
 ipcClient.on('sidecar:lifecycle', (payload) => {
   const state = (payload as { state?: string } | undefined)?.state
   if (state !== 'disconnected' && state !== 'reconnected') return
-  console.log(`[AgentBridge] sidecar ${state}; initialize handshake reset`)
   agentBridge.markRuntimeRestarted()
 })
 

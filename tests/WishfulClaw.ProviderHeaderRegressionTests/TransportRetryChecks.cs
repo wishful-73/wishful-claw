@@ -1,4 +1,5 @@
 using System.Net.Http;
+using WishfulClaw.Agent.Llm;
 using WishfulClaw.Agent;
 
 namespace WishfulClaw.ProviderHeaderRegressionTests;

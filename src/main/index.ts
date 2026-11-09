@@ -1,3 +1,11 @@
+/**
+ * 超标待拆分（2026-11-05，行数以实际为准，AGENTS.md §大文件拆分 第 7 条）。
+ * 现状：主进程装配入口，混了三件事 —— 窗口创建（`createWindow` / `showUpdateDetails`）、
+ * 托盘与菜单（`getTrayIcon` / `createTray`）、应用生命周期与 IPC 注册清单（`app.on(...)` 与各 `register*Handlers`）。
+ * 拆分方向：`main-window-create.ts` / `main-tray.ts` / `main-lifecycle.ts`，由本文件按现有顺序调用。
+ * 未随本轮动：ready 前的顺序约束（数据目录 → 单实例锁 → 协议注册）与窗口 / tray 单例引用要一并搬，
+ * 而启动路径刚在 v1.0.4~v1.0.8 验收过，改动挪到下个迭代单独走。
+ */
 import { app, BrowserWindow, dialog, shell, Tray, Menu, nativeImage } from 'electron'
 import { mkdirSync } from 'fs'
 import { join } from 'path'
@@ -33,7 +41,6 @@ import { startMemoryMonitor } from './diagnostics/memory-monitor'
 import { installDisplayMediaHandler } from './plugins/plugin-audio'
 import { registerPluginLifecycle } from './plugins/plugin-lifecycle'
 import { registerWebFetchHandlers } from './ipc/web-fetch-handlers'
-import { registerApiRequestHandlers } from './ipc/api-request-handler'
 import { registerSshHandlers, cleanupSshHandlers } from './ipc/ssh-handlers'
 import { registerSkillHandlers } from './ipc/skill-handlers'
 import { registerSshFsHandlers } from './ipc/ssh-fs-handlers'
@@ -42,7 +49,6 @@ import { registerBuiltInChannelProviders } from './channels/register-providers'
 import { registerChannelHandlers, autoStartChannels } from './ipc/channel-handlers'
 import { registerQuickLauncher } from './quick-launcher'
 import { registerClipboardEnhancer } from './clipboard-enhancer'
-import { startWorkbuddyCheckinScheduler } from './lib/workbuddy-checkin-scheduler'
 import { setPluginManager } from './channels/auto-reply'
 import { safeSendMessagePackToWindow } from './window-ipc'
 import { setMainWindow } from './main-window-registry'
@@ -353,7 +359,6 @@ if (!gotTheLock) {
   startMemoryMonitor()
   registerDiagnosticsHandlers()
 registerWebFetchHandlers()
-registerApiRequestHandlers()
 registerCodeGraphHandlers()
 
   // ── Worker forwarders (agent-history / db / goal) ──
@@ -371,9 +376,6 @@ registerCodeGraphHandlers()
   registerChannelHandlers(channelManager)
   setPluginManager(channelManager)
   logInfo('main', 'Channel system initialized')
-
-  // 每日签到（WorkBuddy）：静默跑在主进程，窗口是否打开都不影响
-  startWorkbuddyCheckinScheduler()
 
   registerMessagePackHandler<unknown, unknown[]>(
     'agents:list',

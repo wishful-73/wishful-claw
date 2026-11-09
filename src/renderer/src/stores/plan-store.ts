@@ -275,7 +275,6 @@ export const usePlanStore = create<PlanStore>()(
         releaseDormantPlanMemory(state, sessionId)
       })
       dbCreatePlan(plan)
-      useChatStore.getState().clearSessionPromptSnapshot(sessionId)
       return plan
     },
 
@@ -295,10 +294,6 @@ export const usePlanStore = create<PlanStore>()(
       if (patch.filePath !== undefined) dbPatch.filePath = patch.filePath
       if (patch.specJson !== undefined) dbPatch.specJson = patch.specJson
       dbUpdatePlan(planId, dbPatch)
-      const plan = get().plans[planId]
-      if (plan?.sessionId) {
-        useChatStore.getState().clearSessionPromptSnapshot(plan.sessionId)
-      }
     },
 
     approvePlan: (planId) => {
@@ -313,10 +308,6 @@ export const usePlanStore = create<PlanStore>()(
         }
       })
       dbUpdatePlan(planId, { status: 'approved', updatedAt: now })
-      const plan = get().plans[planId]
-      if (plan?.sessionId) {
-        useChatStore.getState().clearSessionPromptSnapshot(plan.sessionId)
-      }
     },
 
     rejectPlan: (planId) => {
@@ -331,10 +322,6 @@ export const usePlanStore = create<PlanStore>()(
         }
       })
       dbUpdatePlan(planId, { status: 'rejected', updatedAt: now })
-      const plan = get().plans[planId]
-      if (plan?.sessionId) {
-        useChatStore.getState().clearSessionPromptSnapshot(plan.sessionId)
-      }
     },
 
     beginImplementation: (planId) => {
@@ -349,10 +336,6 @@ export const usePlanStore = create<PlanStore>()(
         }
       })
       dbUpdatePlan(planId, { status: 'implementing', updatedAt: now })
-      const plan = get().plans[planId]
-      if (plan?.sessionId) {
-        useChatStore.getState().clearSessionPromptSnapshot(plan.sessionId)
-      }
     },
 
     completePlan: (planId) => {
@@ -367,10 +350,6 @@ export const usePlanStore = create<PlanStore>()(
         }
       })
       dbUpdatePlan(planId, { status: 'completed', updatedAt: now })
-      const plan = get().plans[planId]
-      if (plan?.sessionId) {
-        useChatStore.getState().clearSessionPromptSnapshot(plan.sessionId)
-      }
     },
 
     deletePlan: (planId) => {
@@ -386,9 +365,6 @@ export const usePlanStore = create<PlanStore>()(
         releaseDormantPlanMemory(state)
       })
       dbDeletePlan(planId)
-      if (existingPlan?.sessionId) {
-        useChatStore.getState().clearSessionPromptSnapshot(existingPlan.sessionId)
-      }
     },
 
     syncPlanFromNative: (plan) => {
@@ -401,7 +377,6 @@ export const usePlanStore = create<PlanStore>()(
         state.plansBySession[plan.sessionId] = stripPlanPayload(plan)
         releaseDormantPlanMemory(state, plan.sessionId)
       })
-      useChatStore.getState().clearSessionPromptSnapshot(plan.sessionId)
     },
 
     getPlanBySession: (sessionId) => {

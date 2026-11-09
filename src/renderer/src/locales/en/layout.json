@@ -77,7 +77,6 @@
     "souls": "Souls",
     "sync": "Sync",
     "draw": "Draw",
-    "translate": "Translate",
     "tasks": "Tasks",
     "codegraph": "Code Graph"
   },
@@ -215,7 +214,6 @@
     "skills": "Skills",
     "souls": "Souls",
     "sync": "Sync",
-    "translate": "Translate",
     "codegraph": "Code Graph",
     "comingSoon": "coming soon",
     "moreActions": "More actions",

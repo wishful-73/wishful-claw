@@ -146,7 +146,6 @@ export async function handleProjectSendSessionMessage(
         status: 'in_progress',
         updatedAt: Date.now()
       })
-      useChatStore.getState().clearSessionPromptSnapshot(followUp.sourceSessionId)
     }
     if (scheduled.changed === 0) {
       return {
@@ -170,8 +169,7 @@ export async function handleProjectSendSessionMessage(
           activeForm: undefined,
           updatedAt: Date.now()
         })
-        useChatStore.getState().clearSessionPromptSnapshot(followUp.sourceSessionId)
-      }
+        }
     } catch (followUpError) {
       writeLog('error', `[sendMsg] failed to mark follow-up ${scheduledFollowUpId} failed: ${String(followUpError)}`)
     }

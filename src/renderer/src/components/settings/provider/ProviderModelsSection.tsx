@@ -112,8 +112,8 @@ export function ProviderModelsSection({ provider }: { provider: AIProvider }): R
   const hasEnabledModels = enabledModelCount > 0
   const hasDisabledModels = enabledModelCount < provider.models.length
   // The `requiresApiKey === false` clause is load-bearing: `isProviderAuthReady`
-  // answers "can this provider serve a model right now" and reports OAuth-backed
-  // providers (Codex / Copilot / Kimi) as not ready, since they carry no API key.
+  // answers "can this provider serve a model right now" and reports channel-auth
+  // providers as not ready, since they carry no API key.
   const authReady = provider.requiresApiKey === false || isProviderAuthReady(provider)
 
   const filteredModels = useMemo(() => {

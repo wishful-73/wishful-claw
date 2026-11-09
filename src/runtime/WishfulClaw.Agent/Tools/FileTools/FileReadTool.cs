@@ -12,6 +12,7 @@ using System.Text.Json;
 
 using System.Threading.Tasks;
 
+using WishfulClaw.Agent.Llm;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
 

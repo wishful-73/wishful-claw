@@ -1,8 +1,7 @@
-﻿import { create } from 'zustand'
+import { create } from 'zustand'
 import { emitAgentRuntimeSync, isAgentRuntimeSyncSuppressed } from '../lib/agent-runtime-sync'
 import { invokeMessagePackBinary } from '../lib/ipc/messagepack-ipc-client'
 import { dbCreateTask, dbUpdateTask, dbDeleteTask, dbDeleteTasksBySession, rowToTask, buildDbPatch, TaskRow, TaskStore } from './task-store-helpers'
-import { useChatStore } from '@renderer/stores/chat-store'
 import { DB_TASKS_LIST_BY_SESSION_MSGPACK_CHANNEL } from '@shared/messagepack/binary-ipc'
 import type { TaskItem } from './task-store-helpers'
 
@@ -78,9 +77,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       return { tasksBySession: nextTasksBySession }
     })
     dbCreateTask(newTask, sortOrder)
-    if (newTask.sessionId) {
-      useChatStore.getState().clearSessionPromptSnapshot(newTask.sessionId)
-    }
     if (!isAgentRuntimeSyncSuppressed()) {
       emitAgentRuntimeSync({ kind: 'task_add', task: newTask })
     }
@@ -138,9 +134,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Persist even when task is currently off-screen (another active session).
     if (updatedTask) {
       dbUpdateTask(id, buildDbPatch(patch, now))
-      if (updatedTask.sessionId) {
-        useChatStore.getState().clearSessionPromptSnapshot(updatedTask.sessionId)
-      }
       if (!isAgentRuntimeSyncSuppressed()) {
         emitAgentRuntimeSync({ kind: 'task_update', id, patch })
       }
@@ -149,7 +142,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   deleteTask: (id) => {
-    const existingTask = get().getTask(id)
     let deleted = false
 
     set((state) => {
@@ -184,9 +176,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     if (!deleted) return false
     dbDeleteTask(id)
-    if (existingTask?.sessionId) {
-      useChatStore.getState().clearSessionPromptSnapshot(existingTask.sessionId)
-    }
     if (!isAgentRuntimeSyncSuppressed()) {
       emitAgentRuntimeSync({ kind: 'task_delete', id })
     }
@@ -249,7 +238,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       }
     })
     dbDeleteTasksBySession(sessionId)
-    useChatStore.getState().clearSessionPromptSnapshot(sessionId)
     if (!isAgentRuntimeSyncSuppressed()) {
       emitAgentRuntimeSync({ kind: 'task_delete_session', sessionId })
     }

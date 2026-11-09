@@ -7,6 +7,7 @@
 
 import type { McpClientWrapper } from './mcp-client'
 import type { McpServerConfig, McpServerInfo } from './mcp-types'
+import { logInfo } from '../lib/logger'
 
 /**
  * McpManager — manages multiple MCP server connections with lifecycle control.
@@ -29,7 +30,7 @@ export class McpManager {
 
     try {
       await client.connect()
-      console.log(`[McpManager] Connected: ${config.name} (${config.id})`)
+      logInfo('main', `[McpManager] Connected: ${config.name} (${config.id})`)
     } catch (err) {
       console.error(`[McpManager] Failed to connect ${config.name}:`, err)
       throw err
@@ -43,7 +44,7 @@ export class McpManager {
 
     try {
       await client.disconnect()
-      console.log(`[McpManager] Disconnected: ${id}`)
+      logInfo('main', `[McpManager] Disconnected: ${id}`)
     } catch (err) {
       console.error(`[McpManager] Error disconnecting ${id}:`, err)
     } finally {
@@ -156,6 +157,6 @@ export class McpManager {
   async disconnectAll(): Promise<void> {
     const ids = Array.from(this.clients.keys())
     await Promise.allSettled(ids.map((id) => this.disconnectServer(id)))
-    console.log(`[McpManager] All MCP servers disconnected`)
+    logInfo('main', `[McpManager] All MCP servers disconnected`)
   }
 }

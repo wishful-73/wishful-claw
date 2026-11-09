@@ -1,6 +1,6 @@
 {
   "name": "wishful-claw",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Wishful Claw - Agent 编程软件",
   "author": "Wishful Claw",
   "main": "./out/main/index.js",
@@ -92,6 +92,7 @@
     "test:image-format": "esbuild tests/image-format/program.ts --bundle --platform=node --format=cjs --outfile=tests/image-format/out/program.cjs && node tests/image-format/out/program.cjs",
     "test:image-block-source": "esbuild tests/image-block-source/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/image-block-source/out/program.cjs && node tests/image-block-source/out/program.cjs",
     "test:desktop-tool-blocks": "esbuild tests/desktop-tool-blocks/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/desktop-tool-blocks/out/program.cjs && node tests/desktop-tool-blocks/out/program.cjs",
+    "test:tool-output-revive": "esbuild tests/tool-output-revive/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/tool-output-revive/out/program.cjs && node tests/tool-output-revive/out/program.cjs",
     "test:image-endpoint": "esbuild tests/image-endpoint/program.ts --bundle --platform=node --format=cjs --outfile=tests/image-endpoint/out/program.cjs && node tests/image-endpoint/out/program.cjs",
     "test:send-model-resolution": "esbuild tests/send-model-resolution/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --alias:@renderer/stores/provider-store=./tests/send-model-resolution/stubs/provider-store.ts --alias:@renderer/stores/chat-store=./tests/send-model-resolution/stubs/chat-store.ts --alias:@renderer/stores/settings-store=./tests/send-model-resolution/stubs/settings-store.ts --alias:@renderer/stores/channel-store=./tests/send-model-resolution/stubs/channel-store.ts --outfile=tests/send-model-resolution/out/program.cjs && node tests/send-model-resolution/out/program.cjs",
     "test:token-format": "esbuild tests/token-format/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/token-format/out/program.cjs && node tests/token-format/out/program.cjs",
@@ -117,7 +118,9 @@
     "test:message-signature": "esbuild tests/message-signature/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --alias:@shared=./src/shared --outfile=tests/message-signature/out/program.cjs && node tests/message-signature/out/program.cjs",
     "test:search-recent-sessions": "esbuild tests/search-recent-sessions/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/search-recent-sessions/out/program.cjs && node tests/search-recent-sessions/out/program.cjs",
     "test:sidebar-session-signature": "esbuild tests/sidebar-session-signature/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --alias:@shared=./src/shared --outfile=tests/sidebar-session-signature/out/program.cjs && node tests/sidebar-session-signature/out/program.cjs",
-    "test:run-reply-window": "esbuild tests/run-reply-window/program.ts --bundle --platform=node --format=cjs --outfile=tests/run-reply-window/out/program.cjs && node tests/run-reply-window/out/program.cjs"
+    "test:run-reply-window": "esbuild tests/run-reply-window/program.ts --bundle --platform=node --format=cjs --outfile=tests/run-reply-window/out/program.cjs && node tests/run-reply-window/out/program.cjs",
+    "test:browser-summary-fallback": "esbuild tests/browser-summary-fallback/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/browser-summary-fallback/out/program.cjs && node tests/browser-summary-fallback/out/program.cjs",
+    "test:session-scoped-agent-state": "esbuild tests/session-scoped-agent-state/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/session-scoped-agent-state/out/program.cjs && node tests/session-scoped-agent-state/out/program.cjs"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",

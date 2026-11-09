@@ -12,6 +12,7 @@
 // 与 `tests/global-dispatch-meta`（TS 侧）的分工：那边管 S-278 的派活 wire 形状 +
 // 跨语言源码闸；这里管普通消息的 wire。两者都是「协议说明只进 content、不进 displayContent」。
 
+using WishfulClaw.Agent.Executors;
 using WishfulClaw.Agent;
 
 namespace WishfulClaw.SessionMessageWireRegressionTests;

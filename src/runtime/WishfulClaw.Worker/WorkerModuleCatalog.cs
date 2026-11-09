@@ -5,6 +5,7 @@
  * Modified by the Wishful 心相 team for Wishful Claw.
  */
 
+using WishfulClaw.Agent.Executors;
 using WishfulClaw.Contracts;
 using WishfulClaw.Agent;
 using WishfulClaw.Worker.Modules;

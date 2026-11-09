@@ -80,6 +80,47 @@ public static partial class DbMessageTools
         return rows;
     }
 
+    /// <summary>
+    /// 会话恢复读取（S-338 / S-328 刀 28）。<paramref name="afterCreatedAt"/> 为 null ⇒ 全量；
+    /// 有值 ⇒ 只取快照提交之后写入的消息。
+    ///
+    /// <para>
+    /// <b>边界只能用快照行自己的 <c>created_at</c>，不能用 <c>through_created_at</c> /
+    /// <c>through_sort_order</c>。</b>快照行的 <c>created_at</c> 是一次写入、永不改写的壁钟时间，
+    /// 普通消息保存动不了它；而 <c>sort_order</c> 是渲染端的 transcript 下标（<c>messages.indexOf</c>），
+    /// 压缩在转写中间插入 boundary+summary 对时会整体平移 —— 拿它做过滤历史上报过假的
+    /// <c>invalid_cursor</c>，把会话永久卡死。所以 <c>sort_order</c> 只做 <c>ORDER BY</c> 的第二个键，
+    /// <b>签名里也刻意不接受它</b>：一旦出现这个参数，下一个人就会拿它做过滤条件，回到那个 bug。
+    /// </para>
+    /// <para>
+    /// <c>ORDER BY created_at ASC, sort_order ASC</c> 两段都不能省：省掉第二段，同一毫秒写入的多条
+    /// 会乱序，正文和工具结果错位。
+    /// </para>
+    /// <para>
+    /// 显式列而不是 <c>SELECT *</c>：<c>messages</c> 是最热的表，加列时静默错位的代价最高。
+    /// </para>
+    /// </summary>
+    public static List<MessageEntity> ListForRestore(DbService db, string sessionId, long? afterCreatedAt)
+    {
+        const string Columns = "id, session_id, role, content, meta, created_at, updated_at, usage, sort_order";
+
+        if (afterCreatedAt is null)
+        {
+            return db.Query(
+                $"SELECT {Columns} FROM messages WHERE session_id = @sid ORDER BY created_at ASC, sort_order ASC",
+                EntityMappers.MapMessage,
+                DbService.Param("@sid", sessionId));
+        }
+
+        return db.Query(
+            $"SELECT {Columns} FROM messages " +
+            "WHERE session_id = @sid AND created_at > @snapshotCreatedAt " +
+            "ORDER BY created_at ASC, sort_order ASC",
+            EntityMappers.MapMessage,
+            DbService.Param("@sid", sessionId),
+            DbService.Param("@snapshotCreatedAt", afterCreatedAt.Value));
+    }
+
     private static WorkerResponse ReadRows(JsonElement parameters, string? role, bool paged)
     {
         try
@@ -87,6 +128,14 @@ public static partial class DbMessageTools
             var sessionId = RequireString(parameters, "sessionId");
             DbClient.EnsureInitialized(parameters);
             var db = DbClient.GetClient(parameters);
+
+            // 无 role、无分页 ⇒ 与 ListForRestore 的全量分支逐字节等价（S-336 薄化）。
+            // 有过滤/分页的是端点自己的对外契约，留在下面，不走 ListForRestore。
+            if (role is null && !paged)
+            {
+                var restored = ListForRestore(db, sessionId, null);
+                return WorkerResponse.Json(ToRowsWithParts(db, restored), InfrastructureJsonContext.Default.ListMessageRow);
+            }
 
             List<SqliteParameter> paramList = [new("@sid", sessionId)];
             string sql;

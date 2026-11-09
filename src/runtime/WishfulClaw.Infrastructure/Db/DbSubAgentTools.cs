@@ -219,19 +219,12 @@ public static class DbSubAgentTools
         }
     }
 
+    /// <summary>
+    /// 保留这个入口只为「端点内部复用」，实体实现已搬到 <see cref="DbSubAgentRunStore.Insert"/>。
+    /// 同一份 INSERT SQL 只允许存在一处（S-328 §三），这里不许再写回去。
+    /// </summary>
     internal static void InsertSubAgentRun(DbService db, SubAgentRunEntity entity)
-    {
-        db.Execute(
-            "INSERT INTO sub_agent_runs (tool_use_id, session_id, agent_name, data, started_at, completed_at, success) " +
-            "VALUES (@tuid, @sid, @name, @data, @sa, @ca, @suc)",
-            new SqliteParameter("@tuid", entity.ToolUseId),
-            new SqliteParameter("@sid", entity.SessionId),
-            new SqliteParameter("@name", entity.AgentName),
-            new SqliteParameter("@data", entity.Data),
-            new SqliteParameter("@sa", entity.StartedAt),
-            new SqliteParameter("@ca", (object?)entity.CompletedAt ?? DBNull.Value),
-            new SqliteParameter("@suc", (object?)entity.Success ?? DBNull.Value));
-    }
+        => DbSubAgentRunStore.Insert(db, entity);
 
     private static SubAgentRunEntity? ParseSubAgentRecord(JsonElement item)
     {

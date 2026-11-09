@@ -3,6 +3,7 @@ using System;
 using System.Buffers.Binary;
 
 using System.IO;
+using WishfulClaw.Agent.Llm;
 
 namespace WishfulClaw.Agent.Tools.FileTools;
 
@@ -156,20 +157,21 @@ internal static class ImageFileProbe
     {
         try
         {
-            var data = ProviderContentHelpers.StripDataUrlPrefix(base64);
-            if (string.IsNullOrEmpty(data) || data.Length < 24) return false;
+            // S-324：span 版，不复制整串 base64；只在真要交给 Convert 的头/尾窗口上落 string。
+            var data = ProviderContentHelpers.StripDataUrlPrefixSpan(base64);
+            if (data.IsEmpty || data.Length < 24) return false;
 
             // 总字节数只需精确到「WebP 声明的长度够不够」，padding 修正一下就够。
             var totalLength = (long)data.Length / 4 * 3;
             if (data.EndsWith("==", StringComparison.Ordinal)) totalLength -= 2;
-            else if (data.EndsWith('=')) totalLength -= 1;
+            else if (data[^1] == '=') totalLength -= 1;
 
-            var head = Convert.FromBase64String(data[..16]);
+            var head = Convert.FromBase64String(data[..16].ToString());
 
             // 尾部窗口：TailBytes 字节要 4/3 倍字符，先取整再对齐到 4 字符边界（多读几个字节无害）。
             var tailStart = Math.Max(0, data.Length - (TailBytes / 3 + 1) * 4);
             tailStart -= tailStart % 4;
-            var tail = Convert.FromBase64String(data[tailStart..]);
+            var tail = Convert.FromBase64String(data[tailStart..].ToString());
 
             return JudgeContainer(head, tail, totalLength, mediaType);
         }

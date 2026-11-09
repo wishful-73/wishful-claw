@@ -398,9 +398,9 @@ Local State 的 os_crypt.encrypted_key（base64，去前 5 字节 "DPAPI"）
 | **已支持挂子进程** | `ExtensionManifest.mcpServers` | `stdio` 可给 `command` / `args` / `env` / `cwd` ⇒ **「插件带一个 exe」这条路已经通了** |
 | **已支持插件自带 HTML** | `ExtensionRendererDefinition` / `ExtensionComponentDefinition`（`type: 'html'`、`entry`） | 但只用于**聊天窗里的卡片**，不是独立功能页 |
 | MCP 通道成熟 | `src/main/mcp/mcp-client.ts`（`StdioClientTransport`，握手超时）+ C# `AgentRuntimeMcpExecutor` | 子进程生命周期与 JSON-RPC 现成 |
-| `webviewTag: true` | `src/main/index.ts:123` | 外部 UI 载体基础在 |
-| **内置插件是硬编码四个** | `src/renderer/src/lib/app-plugin/types.ts:75`（image / browser / desktop-control / codegraph） | `AppPluginId` 是字面量联合、`builtin: true` 写死 ⇒ **不可外部加载** |
-| **`requiresDownload` 是死字段** | 声明于 `types.ts:61`，唯一消费点 `AppPluginPanel.tsx:174` 且读的是 codegraph 的 `false` | **零下载实现**，「资产按需下载」这块是空的 |
+| `webviewTag: true` | `src/main/index.ts:137` | 外部 UI 载体基础在 |
+| **内置插件是硬编码四个** | `src/renderer/src/lib/app-plugin/types.ts:39`（`AppPluginId` 字面量联合：image / browser / desktop-control / codegraph） | `AppPluginId` 是字面量联合、`builtin: true` 写死 ⇒ **不可外部加载**。注：`codegraph` 这一项是 S-303 剥离后的**空壳 + 资产下载器**，引擎本体在独立仓 |
+| **`requiresDownload` 曾是死字段** | 当时声明于 `types.ts:61`，唯一消费点 `AppPluginPanel.tsx:174` 且读的是 codegraph 的 `false` | 当时「零下载实现」——**2026-11-09 订正：已被后续「插件资产按需下载」落地兑现，现声明在 `types.ts:71`、codegraph 改成 `true`（`types.ts:132`）、消费点搬到 `meta.tsx:109`。本条不再是缺口** |
 
 ### 三个缺口（要造的地基）
 

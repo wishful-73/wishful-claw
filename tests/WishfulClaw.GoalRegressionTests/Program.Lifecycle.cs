@@ -1,6 +1,7 @@
 // Goal 回归：目标生命周期套件。
 // 拆分自原单文件 Program.Lifecycle.cs（S-252，2026-10-28），方法体逐字平移。
 using System.Text.Json;
+using WishfulClaw.Agent.Executors;
 using WishfulClaw.Agent;
 using WishfulClaw.Agent.Tools.Providers;
 using WishfulClaw.Contracts;

@@ -11,6 +11,7 @@ import {
   BROWSER_NAVIGATE_TOOL_NAME,
   BROWSER_SCREENSHOT_TOOL_NAME,
   BROWSER_SCROLL_TOOL_NAME,
+  BROWSER_SET_DEVICE_TOOL_NAME,
   BROWSER_SNAPSHOT_TOOL_NAME,
   BROWSER_TYPE_TOOL_NAME
 } from '@renderer/lib/app-plugin/types'
@@ -121,7 +122,7 @@ export function buildSummary(
   }
 
   if (name === BROWSER_CLICK_TOOL_NAME) {
-    return compactText(stringValue(jsonOutput?.clicked) || stringValue(input.selector) || name)
+    return compactText(stringValue(jsonOutput?.clicked) || stringValue(input.selector) || '')
   }
 
   if (name === BROWSER_TYPE_TOOL_NAME) {
@@ -148,7 +149,50 @@ export function buildSummary(
     return amount !== null ? `${direction} ${amount}px` : direction
   }
 
-  return name
+  if (name === BROWSER_SET_DEVICE_TOOL_NAME) {
+    return buildDeviceSummary(input, jsonOutput, t)
+  }
+
+  // 兜底**不许**回显工具名：`BrowserToolCard.tsx:105` 是 `primary: summary || title`，
+  // 空串才能回落到已本地化的 title。S-270 修过 title 侧的同一个病
+  // （`fallbackTitle` 末行 `return name` → `resolveToolDisplayName`，见 :86 注释），
+  // 这里是对称的另一侧 —— S-348。
+  return ''
+}
+
+function buildDeviceSummary(
+  input: Record<string, unknown>,
+  jsonOutput: Record<string, unknown> | null,
+  t: (key: string, options?: Record<string, unknown>) => string
+): string {
+  const device = stringValue(jsonOutput?.device) || stringValue(input.device)
+  // `pc` 是「取消仿真、回桌面形态」，不是缺省值 —— 同 browser-device-presets.ts:54。
+  if (device === 'pc') {
+    return t('toolCall.browser.summary.devicePc', { defaultValue: 'Desktop' })
+  }
+  if (device === 'iphone' || device === 'pixel' || device === 'ipad') {
+    return device === 'iphone' ? 'iPhone' : device === 'pixel' ? 'Pixel' : 'iPad'
+  }
+  if (device === 'custom') {
+    const viewport = jsonOutput?.viewport
+    const width = numberValue((viewport as Record<string, unknown> | undefined)?.width)
+    const height = numberValue((viewport as Record<string, unknown> | undefined)?.height)
+    // 面板没挂载时工具返回 `viewport: null`，用 input 里的请求值兜底。
+    const fallbackWidth = numberValue(input.width)
+    const fallbackHeight = numberValue(input.height)
+    const w = width ?? fallbackWidth
+    const h = height ?? fallbackHeight
+    if (w !== null && h !== null) {
+      return t('toolCall.browser.summary.deviceCustom', {
+        width: w,
+        height: h,
+        defaultValue: `Custom ${w} × ${h}`
+      })
+    }
+    return t('toolCall.browser.summary.deviceCustomSize', { defaultValue: 'Custom' })
+  }
+  // 未知 / 非法设备：工具侧已返回 `{success:false, error}`，主行交给 title。
+  return ''
 }
 
 export function getMainPreview(
@@ -218,6 +262,15 @@ export function getResultRows(
     add('toolCall.browser.fields.title', 'Title', jsonOutput.title)
     add('toolCall.browser.fields.url', 'URL', jsonOutput.url)
     add('toolCall.browser.fields.elements', 'Elements', jsonOutput.elementCount)
+  } else if (name === BROWSER_SET_DEVICE_TOOL_NAME) {
+    // S-348：原来没有这一支，卡片展开后一行字段都没有。
+    add('toolCall.browser.fields.device', 'Device', jsonOutput.device)
+    const viewport = jsonOutput.viewport as Record<string, unknown> | null | undefined
+    const width = numberValue(viewport?.width)
+    const height = numberValue(viewport?.height)
+    if (width !== null && height !== null) {
+      add('toolCall.browser.fields.viewport', 'Viewport', `${width} × ${height}`)
+    }
   }
 
   return rows

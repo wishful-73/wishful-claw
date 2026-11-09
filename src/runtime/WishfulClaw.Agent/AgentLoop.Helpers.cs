@@ -1,7 +1,9 @@
 using System.Buffers;
 using System.Diagnostics;
 using System.Text.Json;
+using WishfulClaw.Agent.Llm;
 using WishfulClaw.Core.Protocol;
+using WishfulClaw.Agent.Executors;
 
 namespace WishfulClaw.Agent;
 
@@ -292,7 +294,7 @@ internal static partial class AgentLoop
     ///
     /// S-231 (2026-10-26): the blocks used to be PREPENDED. They now go last so that
     /// third-party gateways which derive the conversation title from the first user
-    /// message (WorkBuddy domestic / international) read the user's own words. The method
+    /// message read the user's own words. The method
     /// name keeps its historical "Prefix" for call-site stability.
     ///
     /// Key insight: the timestamp is injected ONCE when the user message arrives, and
@@ -371,8 +373,8 @@ internal static partial class AgentLoop
     /// Appends a runtime block to the END of the user's own text.
     /// <para>
     /// S-231: blocks must sit AFTER the user's words — third-party gateways that derive the
-    /// conversation title from the first user message (WorkBuddy domestic / international)
-    /// otherwise show "&lt;current_time&gt;…" as the title.
+    /// conversation title from the first user message otherwise show "&lt;current_time&gt;…"
+    /// as the title.
     /// </para>
     /// <para>
     /// Empty / whitespace-only text (pure-image messages) yields the block alone, never a

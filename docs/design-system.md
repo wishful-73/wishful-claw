@@ -60,9 +60,9 @@
 
 | 组 | token | 出处 |
 |---|---|---|
-| Composer（输入区） | `--composer-shell-top` / `-bottom` / `-border` / `-border-focus` / `-shadow` / `-shadow-focus` / `-glow`、`--composer-editor-surface` / `-strong` / `-border`、`--composer-toolbar-border`、`--composer-panel-bg` / `-border` / `-shadow`、`--composer-control-bg` / `-bg-hover` / `-border` / `-shadow` / `-active-bg` / `-active-border` / `-active-text`、`--composer-send-start` / `-end` / `-shadow` / `-shadow-hover` / `-foreground`、`--composer-chip-bg` / `-border` / `-text` / `-hover`、`--composer-drop-bg`、`--composer-placeholder`、`--composer-suggestion` | `main.css:106-144`（亮）、`:206-239`（暗） |
-| 工作区文件树 | `--tree-row-height`（30px）、`--tree-row-radius`（7px）、`--tree-row-hover-bg`、`--tree-row-current-bg` / `-fg` / `-icon` / `-marker`、`--tree-guide-color`、`--workspace-filetree-bg` / `-divider` / `-empty-bg` | `main.css:147-157`、`:242-252` |
-| Agent 文件面板 | `--agent-files-panel` / `-fg` / `-muted` / `-border` / `-hover` / `-icon` / `-added` / `-deleted` / `-conflict` / `-modified` | `main.css:158-167`、`:253-262`；`--color-agent-files-*` 映射在 `:40-49` |
+| Composer（输入区） | `--composer-shell-top` / `-bottom` / `-border` / `-border-focus` / `-shadow` / `-shadow-focus` / `-glow`、`--composer-editor-surface` / `-strong` / `-border`、`--composer-toolbar-border`、`--composer-panel-bg` / `-border` / `-shadow`、`--composer-control-bg` / `-bg-hover` / `-border` / `-shadow` / `-active-bg` / `-active-border` / `-active-text`、`--composer-send-start` / `-end` / `-shadow` / `-shadow-hover` / `-foreground`、`--composer-chip-bg` / `-border` / `-text` / `-hover`、`--composer-drop-bg`、`--composer-placeholder`、`--composer-suggestion` | `main.css:108-146`（亮）、`:206-239`（暗） |
+| 工作区文件树 | `--tree-row-height`（30px）、`--tree-row-radius`（7px）、`--tree-row-hover-bg`、`--tree-row-current-bg` / `-fg` / `-icon` / `-marker`、`--tree-guide-color`、`--workspace-filetree-bg` / `-divider` / `-empty-bg` | `main.css:149-159`、`:242-252` |
+| Agent 文件面板 | `--agent-files-panel` / `-fg` / `-muted` / `-border` / `-hover` / `-icon` / `-added` / `-deleted` / `-conflict` / `-modified` | `main.css:160-169`、`:253-262`；`--color-agent-files-*` 映射在 `:40-49` |
 
 `--agent-files-added` / `-deleted` / `-conflict` / `-modified` 是**文件变更语义色**（绿 / 红 / 琥珀 / 蓝），与 `--destructive` 不是一回事：前者描述「这个文件被加/删/冲突/改了」，后者描述「这个操作有破坏性」。
 
@@ -86,14 +86,14 @@ xterm.js 用 `ITheme`（`terminal-theme.ts`），**不是 CSS**：`background` /
 
 | 项 | 值 | 出处 |
 |---|---|---|
-| 字族 | `--app-font-family`，默认 `Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, …` | `main.css:103` |
-| 基准字号 | `--app-font-size`，默认 `14px` | `main.css:102` |
+| 字族 | `--app-font-family`，默认 `Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, …` | `main.css:105` |
+| 基准字号 | `--app-font-size`，默认 `14px` | `main.css:104` |
 | 用户可覆盖 | 字族与字号都在设置里可改 | `ThemeRuntimeSync.tsx:34-44`、`theme-sync.ts:101-106` |
 
 两条**结构事实**，改样式前必须知道：
 
-1. **`html { font-size: var(--app-font-size) }`**（`main.css:269-271`）—— 用户把字号调大，**全部 rem 尺寸一起缩放**。所以：组件尺寸优先用 rem / Tailwind 默认步进，**不要写死 px**，否则用户调字号时那一块会不跟随，视觉上「卡住」。
-2. `body` 上挂了 `-webkit-font-smoothing: antialiased` 与 `-moz-osx-font-smoothing: grayscale`（`main.css:277-278`）—— 新组件不需要重复声明。
+1. **`html { font-size: var(--app-font-size) }`**（`main.css:271-273`）—— 用户把字号调大，**全部 rem 尺寸一起缩放**。所以：组件尺寸优先用 rem / Tailwind 默认步进，**不要写死 px**，否则用户调字号时那一块会不跟随，视觉上「卡住」。
+2. `body` 上挂了 `-webkit-font-smoothing: antialiased` 与 `-moz-osx-font-smoothing: grayscale`（`main.css:279-280`）—— 新组件不需要重复声明。
 
 独立窗口（如文件搜索）不继承主窗体的 `html` 规则，**必须自己声明**：`renderer/file-search.html:20-21` 就是显式 `var(--app-font-family)` + `var(--app-font-size)`。新增独立窗口照抄这个写法。
 
@@ -111,7 +111,7 @@ xterm.js 用 `ITheme`（`terminal-theme.ts`），**不是 CSS**：`background` /
 
 ## 五、圆角
 
-四档由**一个基数**推导（`main.css:50-53`）：
+四档由**一个基数**推导（`main.css:52-55`）：
 
 | 档 | 计算 | 默认值 | 用于 |
 |---|---|---|---|
@@ -120,32 +120,32 @@ xterm.js 用 `ITheme`（`terminal-theme.ts`），**不是 CSS**：`background` /
 | `--radius-lg` | `--radius` | 10px | 容器：卡片、面板 |
 | `--radius-xl` | `--radius + 4px` | 14px | 大容器：对话框、抽屉 |
 
-基数 `--radius: 0.625rem`（`main.css:101`）**只在 `:root` 定义，不在预设的 `cssVars` 里** ⇒ 圆角**不随配色预设变化**，六套预设的圆角完全一致。
+基数 `--radius: 0.625rem`（`main.css:103`）**只在 `:root` 定义，不在预设的 `cssVars` 里** ⇒ 圆角**不随配色预设变化**，六套预设的圆角完全一致。
 
 **已批准的例外**（都有明确理由，不要顺手"统一"掉）：
 
 | 例外 | 值 | 理由 | 出处 |
 |---|---|---|---|
-| Composer 项目态 | `1.375rem`（22px） | 输入区是产品的视觉中心，用比 `xl` 更圆的外形与内容区拉开 | `main.css:400-402` |
-| Composer 会话态 | `1.0625rem`（17px） | 会话内输入区比项目态收敛一档 | `main.css:404-406` |
-| Composer 贴底态 | 底部两角归零 | 输入区与下方内容连成一片时，圆角会切出一道假的边界 | `main.css:408-411` |
-| 树行 | `--tree-row-radius: 7px` | 行高只有 30px，套 10px 会让圆角吃掉半行 | `main.css:148` |
-| 滚动条 | `999px` | 胶囊形 | `main.css:311` |
+| Composer 项目态 | `1.375rem`（22px） | 输入区是产品的视觉中心，用比 `xl` 更圆的外形与内容区拉开 | `main.css:402-404` |
+| Composer 会话态 | `1.0625rem`（17px） | 会话内输入区比项目态收敛一档 | `main.css:406-408` |
+| Composer 贴底态 | 底部两角归零 | 输入区与下方内容连成一片时，圆角会切出一道假的边界 | `main.css:410-413` |
+| 树行 | `--tree-row-radius: 7px` | 行高只有 30px，套 10px 会让圆角吃掉半行 | `main.css:150` |
+| 滚动条 | `999px` | 胶囊形 | `main.css:313` |
 
 ---
 
 ## 六、尺寸
 
-- **基准**：`--tree-row-height: 30px` 是唯一被 token 化的行高（`main.css:147`）—— 树 / 列表类行高对齐它。
+- **基准**：`--tree-row-height: 30px` 是唯一被 token 化的行高（`main.css:149`）—— 树 / 列表类行高对齐它。
 - **规则**：能跟着 `--app-font-size` 缩放的一律用 rem / Tailwind 步进；只有「必须精确」的尺寸（行高、滚动条宽）才写 px 并 token 化。
-- **滚动条**：全站 `5px`（`main.css:302-305`），且 xterm 需要 `!important` 才能压到 5px（`:327-345` 有解释：xterm 把 14px 内联写死）。新增自定义滚动容器时不要另开宽度。
+- **滚动条**：全站 `5px`（`main.css:304-307`），且 xterm 需要 `!important` 才能压到 5px（`:327-345` 有解释：xterm 把 14px 内联写死）。新增自定义滚动容器时不要另开宽度。
 
 ---
 
 ## 七、层次与景深
 
 - **景深靠阴影 + 底色的组合**，不靠边框堆叠：`--composer-shell-shadow`（常态）与 `--composer-shell-shadow-focus`（聚焦）成对，`--composer-panel-shadow` 同理。
-- 聚焦态同时改**描边**与**阴影**（`main.css:395-398`）—— 只改其中一个在深色预设下会看不出来。
+- 聚焦态同时改**描边**与**阴影**（`main.css:397-400`）—— 只改其中一个在深色预设下会看不出来。
 - 阴影色一律走 `color-mix(...)` 或带 alpha 的黑，**不写实色**，否则换预设时会显脏。
 
 ---
@@ -154,11 +154,11 @@ xterm.js 用 `ITheme`（`terminal-theme.ts`），**不是 CSS**：`background` /
 
 | 项 | 值 | 出处 |
 |---|---|---|
-| 折叠展开 | `--animate-collapsible-down` / `-up`，`0.2s ease-out` | `main.css:54-55` |
-| 滚动条 hover | `background 0.2s` | `main.css:312` |
-| 全局滚动行为 | `scroll-behavior: smooth` | `main.css:289-293` |
+| 折叠展开 | `--animate-collapsible-down` / `-up`，`0.2s ease-out` | `main.css:56-57` |
+| 滚动条 hover | `background 0.2s` | `main.css:314` |
+| 全局滚动行为 | `scroll-behavior: smooth` | `main.css:291-295` |
 
-**`scroll-behavior: smooth` 是全局的**，写在 `@layer base` 的通配符上。需要**程序化跟随**（流式输出时自动滚到底）的容器必须显式给 `scroll-auto`，否则会跟动画打架 —— `main.css:285-288` 记录了这条踩坑（iter-30 修聊天窗滚动时只能靠 inline style 硬顶）。
+**`scroll-behavior: smooth` 是全局的**，写在 `@layer base` 的通配符上。需要**程序化跟随**（流式输出时自动滚到底）的容器必须显式给 `scroll-auto`，否则会跟动画打架 —— `main.css:287-290` 记录了这条踩坑（iter-30 修聊天窗滚动时只能靠 inline style 硬顶）。
 
 ---
 

@@ -1,5 +1,8 @@
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
+using WishfulClaw.Agent.Executors;
+using WishfulClaw.Agent.Llm;
+using WishfulClaw.Agent.Sessions;
 using WishfulClaw.Agent;
 using WishfulClaw.Core.Tools;
 using WishfulClaw.Infrastructure.Db;
@@ -207,6 +210,10 @@ internal static class Program
             unboundedHits.Any(h => h.Title == "区间内条目")
             && unboundedHits.Any(h => h.Title == "区间外条目"),
             "不给区间时不过滤");
+
+        // scope 参数化（2026-11-09）：拼串时代这一条靠 EscapeSql 兜撇号，现在靠参数 —— 不炸、不误命中。
+        var quotedScope = search.SearchAsync("记忆筛选", "o'brien").GetAwaiter().GetResult();
+        Assert(quotedScope.Count == 0, "含撇号的 scope 不炸且筛空");
     }
 
     private static void InsertMemory(string title, string content, long updatedAt)
@@ -288,7 +295,7 @@ internal static class Program
 
     /// <summary>
     /// S-231：运行时附加块必须落在用户原话「之后」，否则取首条 user 消息做会话标题的第三方网关
-    /// （WorkBuddy 国内版 / 国际版）会把 &lt;current_time&gt; 当标题。
+    /// 会把 &lt;current_time&gt; 当标题。
     /// 本套件同时锁方向（helper 单元）、锁形状（组合层直调注入）、锁出站请求体（真实 builder）。
     /// </summary>
     private static void RunTransientBlockPlacementSuite()

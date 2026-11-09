@@ -35,17 +35,17 @@
 | 位置 | 内容 | 现状 |
 |---|---|---|
 | `src/runtime/WishfulClaw.Persona/PromptBuilder.cs` | 系统提示词的分段组装（每轮重发） | 英文、分节 |
-| `src/runtime/WishfulClaw.Persona/PersonaGenerationPrompt.cs` | AI 生成人格用的元提示词 | 英文、分节 |
+| `src/runtime/WishfulClaw.Persona/PersonaModule.cs` | AI 生成人格用的元提示词 | 英文、分节 |
 | `src/runtime/WishfulClaw.Persona/Resources/Personas/*/*.md` | 6 套预置人格文档（每轮重发，**体量最大的一块**） | 中文，见「已知偏离」 |
 | `src/runtime/WishfulClaw.Agent/Tools/**/*.cs` 的 `Description` | 工具描述 | 英文 |
 | `src/runtime/WishfulClaw.Core/Tools/ToolCategoryCatalog.cs` | 27 个工具类别的一行描述 | 英文 |
-| `Agent/Goal/GoalPromptTemplates.cs` | Goal 模式的 6 份提示词 | 英文、分节 |
-| `Agent/AgentRuntimePlanExecutor.cs` | 计划模式工作流（`PlanModeWorkflow` 常量） | 英文、分节 |
-| `Agent/ContextCompression.cs` | 上下文压缩提示词 | 英文、分节 |
-| `Workspace/Memory/MemoryRecallService.cs` | 记忆召回的防注入包装 | 英文 |
+| `src/runtime/WishfulClaw.Agent/Goal/GoalPromptTemplates.cs` | Goal 模式的 6 份提示词 | 英文、分节 |
+| `src/runtime/WishfulClaw.Agent/Executors/AgentRuntimePlanExecutor.cs` | 计划模式工作流（`PlanModeWorkflow` 常量） | 英文、分节 |
+| `src/runtime/WishfulClaw.Agent/Compression/ContextCompression.cs` | 上下文压缩提示词 | 英文、分节 |
+| `src/runtime/WishfulClaw.Workspace/Memory/MemoryRecallService.cs` | 记忆召回的防注入包装 | 英文 |
 
-> `src/runtime/WishfulClaw.CodeGraph/**` 是 vendored 的上游代码，其中的关键词表与提示词与上游逐字对齐，
-> **不要动**（改动会在下次同步时被冲掉，也失去与上游对账的能力）。
+> CodeGraph 已于 S-303 剥离为**独立仓 + MCP 插件**，本仓不再有 `src/runtime/WishfulClaw.CodeGraph/**`。
+> 它的关键词表与提示词跟着插件走，改它要换库改 —— 本仓里搜不到、也不需要搜。
 
 ## 临时文档的去处
 

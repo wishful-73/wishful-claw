@@ -836,18 +836,11 @@
       "title": "Image Plugin",
       "builtinTitle": "GPT image generation",
       "running": "Running image generation",
-      "waitingRetry": "Waiting for manual retry",
       "completed": "Image generation completed",
       "failed": "Image generation failed",
       "prompt": "Prompt",
       "generating": "Generating images...",
       "elapsed": "Elapsed {{duration}}",
-      "retryRequired": "Rate limit hit, waiting for retry",
-      "retryHint": "Generated {{completed}} / {{total}} images so far. The main session stays paused until you click retry.",
-      "retryCaveat": "Note: if the API failed directly instead of being rate-limited, retrying may have no effect.",
-      "retryConfirmTitle": "Retry now?",
-      "retryConfirmDesc": "Generated {{completed}} / {{total}} images so far. Retrying usually only helps when the request was rate-limited; if the API failed directly, retrying may have no effect.",
-      "retryConfirmAction": "Confirm Retry",
       "result": "Results ({{count}})",
       "notes": "Notes",
       "countValue": "Count {{count}}"
@@ -966,7 +959,8 @@
         "scrollY": "Scroll Y",
         "scrollHeight": "Scroll Height",
         "viewport": "Viewport",
-        "elements": "Elements"
+        "elements": "Elements",
+        "device": "Device"
       },
       "summary": {
         "content": "{{type}} · {{count}} chars",
@@ -976,7 +970,10 @@
         "snapshot": "interactive elements",
         "type": "type text",
         "typeSubmit": "{{selector}} · submit",
-        "scrollY": "Y {{value}}"
+        "scrollY": "Y {{value}}",
+        "devicePc": "Desktop",
+        "deviceCustom": "Custom {{width}} × {{height}}",
+        "deviceCustomSize": "Custom"
       }
     },
     "canceled": "Canceled",

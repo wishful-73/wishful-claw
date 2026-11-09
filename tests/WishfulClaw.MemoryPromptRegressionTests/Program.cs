@@ -13,6 +13,7 @@ using System;
 using System.IO;
 using System.Text;
 using System.Text.Json;
+using WishfulClaw.Agent.Llm;
 using WishfulClaw.Agent;
 using WishfulClaw.Infrastructure.Storage;
 using WishfulClaw.Persona;

@@ -5,9 +5,12 @@
 // three lines of delegate-and-catch. Splitting it would spread a single decision table across files
 // and make "which branch wins" a question you answer by opening several of them. See AGENTS.md.
 using System.Text.Json;
+using WishfulClaw.Agent.Desktop;
+using WishfulClaw.Agent.SubAgents;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
+using WishfulClaw.Agent.Executors;
 
 namespace WishfulClaw.Agent;
 

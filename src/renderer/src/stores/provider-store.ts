@@ -37,7 +37,12 @@ export const useProviderStore = create<ProviderState>()(
       getActiveProvider: () => {
         const { providers, activeProviderId } = get()
         if (!activeProviderId) return providers[0] ?? null
-        return providers.find((p) => p.id === activeProviderId) ?? null
+        const found = providers.find((p) => p.id === activeProviderId)
+        if (found) return found
+        // S-318：activeProviderId 可能指向已被剔除的记录（preset 在公开面移除）。
+        // 直接返回 null 会让所有 inherit 会话连消息都发不出去，所以落一手 ——
+        // 与 `deleteProvider` 删除激活项时的挑选策略保持一致：auth-ready 优先。
+        return providers.find((p) => p.requiresApiKey === false || !!p.apiKey) ?? providers[0] ?? null
       },
 
       getProviderById: (id) => get().providers.find((p) => p.id === id) ?? null,
@@ -389,12 +394,8 @@ export function isProviderAuthReady(provider: AIProvider | null | undefined): bo
   if (authMode === 'apiKey') {
     return provider.requiresApiKey === false || provider.apiKey.trim().length > 0
   }
-  // S-229: 投影补上 `authMode` 之后，OAuth 服务商才会真的带着 `authMode: 'oauth'` 走这里。
-  // 这条分支以前恒 false —— 唯一的后果被虚拟投影的 `undefined` 掩盖了，登录过的
-  // WorkBuddy 会从此在模型选择器里消失。判据与授权页一致：有任一账号的 accessToken 即可用。
-  if (authMode === 'oauth') {
-    return Boolean(provider.oauth?.accessToken) || (provider.oauthAccounts?.length ?? 0) > 0
-  }
+  // S-318：OAuth 授权链已整体下线，只剩 apiKey / channel 两种模式；
+  // channel 走渠道凭据，不参与模型选择判定。
   return false
 }
 

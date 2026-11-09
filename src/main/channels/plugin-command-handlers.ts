@@ -228,7 +228,8 @@ export async function handleNew(ctx: CommandContext, args: string): Promise<Comm
       throw new Error(result.error || 'Native session reset failed')
     }
 
-    console.log(
+    logInfo(
+      'main',
       `[PluginCommand] Cleared session ${ctx.sessionId}, removed ${result.deletedMessages} messages`
     )
     return {
@@ -376,5 +377,6 @@ export async function handleStatus(ctx: CommandContext, args: string): Promise<C
 }
 
 import { handleStats, buildInitAgentPrompt } from './plugin-command-stats'
+import { logInfo } from '../lib/logger'
 
 export { handleStats, buildInitAgentPrompt }

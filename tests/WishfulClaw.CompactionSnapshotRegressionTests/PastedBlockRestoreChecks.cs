@@ -1,3 +1,4 @@
+using WishfulClaw.Agent.Sessions;
 using WishfulClaw.Agent;
 
 namespace WishfulClaw.CompactionSnapshotRegressionTests;

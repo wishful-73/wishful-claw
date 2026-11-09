@@ -412,6 +412,47 @@ public static partial class DbGoalPlanTools
             new SqliteParameter("@sid", sessionId));
     }
 
+    /// <summary>
+    /// 把一个 Goal 下所有「非终态」的 Plan 一次性打成中止态（S-334 / 刀 25，从
+    /// <c>GoalOrchestratorMaterialize.AbortSubtree</c> 搬来，SQL 一字未改）。
+    ///
+    /// 三条约束，搬的时候逐条保住，别「顺手统一」：
+    /// <list type="number">
+    /// <item>条件里必须有 <c>session_id</c> —— 同一 goal 不会跨 session，但过滤留着才能用上索引。</item>
+    /// <item>终态集合由调用方传：Plan 有 <c>superseded</c>，Task 没有（见 <c>DbGoalTaskTools</c> 的同名方法）——
+    /// 两张表的终态数不一样，所以不能抽出一个共用方法。</item>
+    /// <item>本方法与 <c>AbortNonTerminalTasks</c> / <c>MarkExecutingRunsInterrupted</c> 之间**没有任何事务或
+    /// 连锁约束** —— 谁先谁后、谁失败后谁还跑，属于调用点那个 try 的语义，Db 层不带这个知识。</item>
+    /// </list>
+    /// </summary>
+    /// <returns>被中止的行数，供调用点打日志、真机验证时核数。</returns>
+    public static int AbortNonTerminalPlans(
+        DbService db,
+        string goalId,
+        string sessionId,
+        string abortedStatus,
+        IReadOnlyList<string> terminalStatuses,
+        long nowMs)
+    {
+        var placeholders = string.Join(",", terminalStatuses.Select((_, i) => $"@t{i}"));
+        var sqlParams = new List<SqliteParameter>
+        {
+            DbService.Param("@status", abortedStatus),
+            DbService.Param("@now", nowMs),
+            DbService.Param("@gid", goalId),
+            DbService.Param("@sid", sessionId)
+        };
+        for (var i = 0; i < terminalStatuses.Count; i++)
+        {
+            sqlParams.Add(DbService.Param($"@t{i}", terminalStatuses[i]));
+        }
+
+        return db.Execute(
+            "UPDATE goal_plans SET status = @status, updated_at = @now, completed_at = @now " +
+            $"WHERE goal_id = @gid AND session_id = @sid AND status NOT IN ({placeholders})",
+            sqlParams.ToArray());
+    }
+
     private static string? GetString(JsonElement parameters, string name)
     {
         return parameters.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String

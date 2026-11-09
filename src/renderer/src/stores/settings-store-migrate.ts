@@ -342,9 +342,6 @@ export function migrateSettings(persisted: unknown, version: number): Record<str
   if (state.conversationGuideSeen === undefined) {
     state.conversationGuideSeen = false
   }
-  if (typeof state.providerAuthRiskAccepted !== 'boolean') {
-    state.providerAuthRiskAccepted = false
-  }
   if (state.memoryUseMemories === undefined) {
     state.memoryUseMemories = true
   }

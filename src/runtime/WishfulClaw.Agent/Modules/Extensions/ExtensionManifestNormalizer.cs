@@ -1,3 +1,9 @@
+// 超标待拆分（2026-11-06，行数以实际为准，AGENTS.md §大文件拆分 第 7 条）。
+// 拆分方向：按规范化阶段切成 partial —— 字段缺省填充 / 类型纠正 / 正则清洗 / 旧清单兼容。
+// 已是 `partial class ExtensionManifestStore`，再切一刀不需要动调用方。
+// 未拆原因：本轮（v3-iter-8）刀序已排到刀 26，拆它没有回归测试兜底
+// （manifest 规范化只有端到端验证），先登记欠账。
+
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;

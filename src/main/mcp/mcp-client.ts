@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -13,6 +13,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import type { McpServerConfig, McpServerStatus, McpTool, McpResource, McpPrompt } from './mcp-types'
+import { logInfo } from '../lib/logger'
 
 function buildProcessEnv(): Record<string, string> {
   const base: Record<string, string> = {}
@@ -115,7 +116,7 @@ export class McpClientWrapper {
         this.config.autoFallback !== false &&
         this.config.url
       ) {
-        console.log(`[MCP:${this.config.name}] Streamable HTTP failed, falling back to SSE...`)
+        logInfo('main', `[MCP:${this.config.name}] Streamable HTTP failed, falling back to SSE...`)
         try {
           await this.tryConnect('sse')
           this._usedFallback = true
@@ -177,7 +178,8 @@ export class McpClientWrapper {
     // Cache capabilities
     await this.refreshCapabilities()
 
-    console.log(
+    logInfo(
+      'main',
       `[MCP:${this.config.name}] Connected via ${transportType} — ` +
         `${this._tools.length} tools, ${this._resources.length} resources, ${this._prompts.length} prompts`
     )
@@ -234,7 +236,7 @@ export class McpClientWrapper {
     this._tools = []
     this._resources = []
     this._prompts = []
-    console.log(`[MCP:${this.config.name}] Disconnected`)
+    logInfo('main', `[MCP:${this.config.name}] Disconnected`)
   }
 
   /** Refresh cached tools, resources, and prompts from the server */

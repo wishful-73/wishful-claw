@@ -82,7 +82,7 @@ const CANCEL_REQUEST_TIMEOUT_MS = 3_000
 
 
 
-export type { Session, Project, ChatMessage, SessionMode, SessionScope, CollaborationMode, PermissionMode, CreateSessionOptions, SessionPromptSnapshot, ToolCallInfo, SessionModelSelectionMode } from './types'
+export type { Session, Project, ChatMessage, SessionMode, SessionScope, CollaborationMode, PermissionMode, CreateSessionOptions, ToolCallInfo, SessionModelSelectionMode } from './types'
 
 export type { SessionSlice } from './session-slice'
 
@@ -210,7 +210,7 @@ let _scheduleStreamDeltaFlush: () => void = () => {}
 
 // S-236（2026-10-27）：这里原本有一个 `resolveSessionSupportsVision(modelId)`，它按 modelId
 // 在**全部** provider 里找第一个同名模型来推断「能不能读图」。两个毛病：
-// ①跨 provider 串号 —— 同一个 `glm-5.3` 在 bigmodel / opencode-go / workbuddy 两家之间
+// ①跨 provider 串号 —— 同一个模型 id 在 bigmodel / opencode-go 两家之间
 //   标法不一（false/false/true/false），命中谁全看 providers 数组顺序，于是同一个模型
 //   有时能读图有时不能（就是「多次出现」的现场）；②它和贴图路径（`use-input-area-selectors.ts`
 //   先按 providerId 定位再找 model）是**两套解析**，两条路能得出相反结论 ——
@@ -1643,7 +1643,6 @@ export const useChatStore = create<ChatStore>()(
                 .catch((err) => {
                   console.warn('[chat-store] Failed to refresh session tasks:', err)
                 })
-              get().clearSessionPromptSnapshot(targetSessionId)
             }
 
             break

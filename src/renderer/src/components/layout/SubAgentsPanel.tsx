@@ -234,7 +234,9 @@ export function SubAgentsPanel({
     activeSessionId ? state.getSessionMessages(activeSessionId) : EMPTY_SESSION_MESSAGES
   )
 
-  // Directly access agent store fields (selectSessionScopedAgentState is still a stub)
+  // 按需直读 store 字段，不走 selectSessionScopedAgentState：本组件要的是三张全局
+  // 表的原貌（下文再按 sessionId 过滤），而那个选择器已经把两者合成了一份按会话
+  // 分组的派生结果，用了反而要多拆一遍。S-342 已把它实装，这不是桩。
   const activeSubAgents = useAgentStore((state) => state.activeSubAgents)
   const completedSubAgents = useAgentStore((state) => state.completedSubAgents)
   const subAgentHistory = useAgentStore((state) => state.subAgentHistory)

@@ -173,7 +173,6 @@ export function useChatActions() {
       const sshConnectionId = session.scope === 'project'
         ? session.sshConnectionId ?? project?.sshConnectionId ?? undefined
         : undefined
-      console.log('[ChatActions] sshConnectionId:', { session: session?.sshConnectionId, project: project?.sshConnectionId, resolved: sshConnectionId, projectId })
 
       // Backend manages the session conversation (Reasonix pattern).
       // Frontend only sends the new user message; the backend appends
@@ -554,10 +553,6 @@ export async function exitPlanMode(sessionId: string | null): Promise<void> {
       sandboxEnabled: settingsStore.sandboxEnabled
     })
   }
-}
-
-export async function sendImplementPlanInNewSession(_projectId: string | null, _planId: string): Promise<void> {
-  // TODO: implement plan execution in new session
 }
 
 // === Additional exports needed by WishfulClaw InputArea ===

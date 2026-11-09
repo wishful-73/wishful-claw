@@ -28,6 +28,7 @@ import { DesktopActionToolCard } from '../DesktopActionToolCard'
 import { TASK_TOOL_NAME } from '@renderer/lib/agent/sub-agents/create-tool'
 import { TEAM_TOOL_NAMES } from '@renderer/lib/agent/teams/register'
 import {
+  BROWSER_SCREENSHOT_TOOL_NAME,
   DESKTOP_CAPTURE_WINDOW_TOOL_NAME, DESKTOP_CLICK_TOOL_NAME, DESKTOP_LIST_WINDOWS_TOOL_NAME,
   DESKTOP_SCREENSHOT_TOOL_NAME, DESKTOP_SCROLL_TOOL_NAME, DESKTOP_TYPE_TOOL_NAME,
   DESKTOP_WAIT_TOOL_NAME, IMAGE_GENERATE_TOOL_NAME
@@ -124,8 +125,7 @@ export function ToolBlockRenderer({
       hasVisualResult:
         block.name === IMAGE_GENERATE_TOOL_NAME ||
         block.name === 'visualize_show_widget' ||
-        (isBrowserToolName(block.name) &&
-          (block.input as { action?: string }).action === 'screenshot') ||
+        block.name === BROWSER_SCREENSHOT_TOOL_NAME ||
         !!decodeBashArtifacts(toolOutput),
       keepAsCardToolNames: PROCESS_LINE_CARD_ONLY_TOOL_NAMES
     })
@@ -266,7 +266,6 @@ export function ToolBlockRenderer({
     return (
       <ScaleIn className={liveScaleInClassName}>
         <ImagePluginToolCard
-          toolUseId={block.id}
           input={liveTc?.input ?? block.input}
           output={result?.content ?? liveTc?.output}
           status={statusValue}

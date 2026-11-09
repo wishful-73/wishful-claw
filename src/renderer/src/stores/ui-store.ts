@@ -1,7 +1,7 @@
 /*
- * 豁免（AGENTS.md 第 5 条第 2 类「高度内聚的 store」）：行数以实际为准，超 500 行硬线。
- * 理由：这是 UI store 的唯一聚合入口 —— 浏览器 / 预览 / 标签页等 slice 在此合并，
- * 共享同一份 set/get 与派生状态；拆开会让 slice 之间靠外部传参通信，排查更绕。
+ * 500 行豁免（2026-11-05，行数以实际为准，AGENTS.md §大文件拆分 第 5 条第 2 类「高度内聚的 store」）：
+ * 这是 UI store 的唯一聚合入口 —— 浏览器 / 预览 / 标签页等 slice 在此合并，共享同一份 set/get
+ * 与派生状态；拆开会让 slice 之间改走外部传参通信，排查更绕。slice 本身已在该目录下分文件。
  */
 import { create } from 'zustand'
 import {
@@ -272,11 +272,6 @@ export const useUIStore = create<UIStore>((set, get) => ({
   },
   rightPanelRailWidth: 48,
 
-  // Runtime status panel
-  runtimeStatusPanelOpen: false,
-  toggleRuntimeStatusPanel: () => set((state: any) => ({ runtimeStatusPanelOpen: !state.runtimeStatusPanelOpen })),
-  setRuntimeStatusPanelOpen: (open: any) => set({ runtimeStatusPanelOpen: open }),
-
   // Per-session quota-failover chain. In-memory on purpose: it belongs with the rest
   // of the per-session runtime state (the attempted-chain map, the auto selection),
   // and it is read through one function — provider-auto-fallback.resolveFallbackCandidates —
@@ -453,8 +448,6 @@ export const useUIStore = create<UIStore>((set, get) => ({
   // Hovering state
   isHoveringRightPanel: false,
   setIsHoveringRightPanel: (hovering: any) => set({ isHoveringRightPanel: hovering }),
-  runtimeStatusPanelTriggerHovered: false,
-  setRuntimeStatusPanelTriggerHovered: (hovering: any) => set({ runtimeStatusPanelTriggerHovered: hovering }),
 
   // Session-scoped state
   activeScopedSessionId: null,
@@ -528,13 +521,6 @@ export const useUIStore = create<UIStore>((set, get) => ({
     }
     set({ activeNavItem: 'chat', chatView: 'session', ...CHAT_SURFACE_NAV_RESET })
   },
-  applyRouteFromLocation: () => {
-    // Placeholder: no URL routing for now. Navigation is driven by state.
-  },
-  applyChatRouteFromLocation: () => {
-    // Placeholder - will be implemented when routing is migrated
-  },
-
   // Browser tab management
   ensureBrowserTab: (url: any, sessionId: any, projectId: any, options: any) =>
     set((state: any) => {

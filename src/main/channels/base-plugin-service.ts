@@ -14,6 +14,7 @@ import type {
   ChannelWsMessageParser
 } from './channel-types'
 import { WebSocketTransport } from './ws-transport'
+import { logDebug, logInfo } from '../lib/logger'
 
 /**
  * Abstract base class for all plugin services.
@@ -81,7 +82,7 @@ export abstract class BasePluginService implements MessagingChannelService {
         url: wsUrl,
         onMessage: (raw) => this.handleWsMessage(raw),
         onStatusChange: (status) => {
-          console.log(`[${this.pluginType}:${this.pluginId}] WS status: ${status}`)
+          logInfo('main', `[${this.pluginType}:${this.pluginId}] WS status: ${status}`)
           if (status === 'disconnected' && this._running) {
             // WS disconnected while service is running
             this.emit({
@@ -105,7 +106,7 @@ export abstract class BasePluginService implements MessagingChannelService {
       this.ws.connect()
     }
 
-    console.log(`[${this.pluginType}] Started for plugin ${this.pluginId}`)
+    logInfo('main', `[${this.pluginType}] Started for plugin ${this.pluginId}`)
   }
 
   async stop(): Promise<void> {
@@ -115,7 +116,7 @@ export abstract class BasePluginService implements MessagingChannelService {
     }
     await this.onStop()
     this._running = false
-    console.log(`[${this.pluginType}] Stopped for plugin ${this.pluginId}`)
+    logInfo('main', `[${this.pluginType}] Stopped for plugin ${this.pluginId}`)
   }
 
   isRunning(): boolean {
@@ -140,7 +141,8 @@ export abstract class BasePluginService implements MessagingChannelService {
 
     // Filter out stale messages (> 15 minutes old)
     if (!this.isMessageFresh(parsed.timestamp)) {
-      console.log(
+      logDebug(
+        'main',
         `[${this.pluginType}:${this.pluginId}] Ignoring stale message from ${new Date(parsed.timestamp!).toISOString()}`
       )
       return

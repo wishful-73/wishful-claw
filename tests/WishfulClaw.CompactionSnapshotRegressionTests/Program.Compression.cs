@@ -3,6 +3,10 @@
 using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
+using WishfulClaw.Agent.Compression;
+using WishfulClaw.Agent.Executors;
+using WishfulClaw.Agent.Llm;
+using WishfulClaw.Agent.Sessions;
 using WishfulClaw.Agent;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;

@@ -19,21 +19,14 @@ import {
 } from 'lucide-react'
 import type { ToolCallStatus } from '@renderer/lib/agent/types'
 import type { ImageBlock, TextBlock, ToolResultContent } from '@renderer/lib/api/types'
-import {
-  resolveImageGenerateRetry,
-  type ImageGenerateRetryState
-} from '@renderer/lib/app-plugin/image-tool-retry'
 import { decodeStructuredToolResult } from '@renderer/lib/tools/tool-result-format'
 import { IMAGE_GENERATE_TOOL_NAME } from '@renderer/lib/app-plugin/types'
 import { resolveToolDisplayName } from '@renderer/lib/tools/tool-display-name'
 import { resolveImageBlockSource } from '@renderer/lib/tools/image-block-source'
-import { Button } from '@renderer/components/ui/button'
-import { confirm } from '@renderer/components/ui/confirm-dialog'
 import { cn } from '@renderer/lib/utils'
 import { ImagePreview } from './ImagePreview'
 
 interface ImagePluginToolCardProps {
-  toolUseId?: string
   input: Record<string, unknown>
   output?: ToolResultContent
   status: ToolCallStatus | 'completed'
@@ -61,35 +54,6 @@ function parseErrorMessage(output: ToolResultContent | undefined): string | null
   // successful payload (structured JSON object) most of the time — treating it
   // as an error message marked every successful call as failed.
   return null
-}
-
-function parseRetryState(input: Record<string, unknown>): ImageGenerateRetryState | null {
-  const value = input._retryState
-  if (!value || typeof value !== 'object') return null
-
-  const status = (value as { status?: unknown }).status
-  const errorMessage = (value as { errorMessage?: unknown }).errorMessage
-  const attempt = (value as { attempt?: unknown }).attempt
-  const completedCount = (value as { completedCount?: unknown }).completedCount
-  const totalCount = (value as { totalCount?: unknown }).totalCount
-
-  if (
-    status !== 'awaiting_retry' ||
-    typeof errorMessage !== 'string' ||
-    typeof attempt !== 'number' ||
-    typeof completedCount !== 'number' ||
-    typeof totalCount !== 'number'
-  ) {
-    return null
-  }
-
-  return {
-    status,
-    errorMessage,
-    attempt,
-    completedCount,
-    totalCount
-  }
 }
 
 function lifecycleIcon({
@@ -125,7 +89,6 @@ function SectionHeader({ label }: { label: string }): React.JSX.Element {
 }
 
 export function ImagePluginToolCard({
-  toolUseId,
   input,
   output,
   status,
@@ -136,7 +99,6 @@ export function ImagePluginToolCard({
   const prompt = typeof input.prompt === 'string' ? input.prompt : ''
   const requestedCount =
     typeof input.count === 'number' ? input.count : Number(input.count ?? 1) || 1
-  const retryState = parseRetryState(input)
 
   const { images, notes } = useMemo(() => {
     if (!Array.isArray(output)) {
@@ -154,16 +116,13 @@ export function ImagePluginToolCard({
       ? t('toolCall.noResult', { defaultValue: 'No tool result available' })
       : null
   const parsedError =
-    error || retryState?.errorMessage || parseErrorMessage(output) || canceledMessage
-  const isAwaitingRetry = retryState?.status === 'awaiting_retry'
+    error || parseErrorMessage(output) || canceledMessage
   const isRunning =
     status === 'streaming' ||
     status === 'pending_approval' ||
-    status === 'running' ||
-    isAwaitingRetry
+    status === 'running'
   const hasError =
-    !isAwaitingRetry &&
-    (status === 'error' || status === 'canceled' || (!!parsedError && images.length === 0))
+    status === 'error' || status === 'canceled' || (!!parsedError && images.length === 0)
   // S-270：这个卡片原来把工具名写死成 `ImageGenerate`，不查表，中文环境下也露英文。
   const displayToolName = useMemo(
     () => resolveToolDisplayName(IMAGE_GENERATE_TOOL_NAME, t),
@@ -175,31 +134,12 @@ export function ImagePluginToolCard({
     if (forceOpen) setCollapsed(false)
   }, [forceOpen, isRunning])
 
-  const statusLabel = isAwaitingRetry
-    ? t('toolCall.imagePlugin.waitingRetry')
-    : isRunning
-      ? t('toolCall.imagePlugin.running')
-      : hasError
-        ? t('toolCall.imagePlugin.failed')
-        : t('toolCall.imagePlugin.completed')
+  const statusLabel = isRunning
+    ? t('toolCall.imagePlugin.running')
+    : hasError
+      ? t('toolCall.imagePlugin.failed')
+      : t('toolCall.imagePlugin.completed')
   const promptSummary = prompt.trim() || t('toolCall.receivingArgs')
-
-  const handleRetry = async (): Promise<void> => {
-    if (!toolUseId || !retryState) return
-
-    const confirmed = await confirm({
-      title: t('toolCall.imagePlugin.retryConfirmTitle'),
-      description: t('toolCall.imagePlugin.retryConfirmDesc', {
-        completed: retryState.completedCount,
-        total: retryState.totalCount
-      }),
-      confirmLabel: t('toolCall.imagePlugin.retryConfirmAction'),
-      cancelLabel: t('action.cancel', { ns: 'common' })
-    })
-
-    if (!confirmed) return
-    resolveImageGenerateRetry(toolUseId)
-  }
 
   return (
     <motion.div layout className="my-1 min-w-0 overflow-hidden" transition={CONTENT_TRANSITION}>
@@ -266,40 +206,7 @@ export function ImagePluginToolCard({
                 </div>
               </div>
 
-              {isAwaitingRetry ? (
-                <motion.div
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={ITEM_TRANSITION}
-                  className="space-y-3 rounded-lg border border-amber-500/25 bg-amber-500/[0.045] px-3 py-3 text-sm"
-                >
-                  <div className="flex items-start gap-2 text-amber-700 dark:text-amber-300">
-                    <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-                    <div className="space-y-1">
-                      <p className="font-medium">{t('toolCall.imagePlugin.retryRequired')}</p>
-                      <p className="text-xs leading-relaxed text-muted-foreground">
-                        {t('toolCall.imagePlugin.retryHint', {
-                          completed: retryState?.completedCount ?? images.length,
-                          total: retryState?.totalCount ?? requestedCount
-                        })}
-                      </p>
-                      <p className="text-xs leading-relaxed text-amber-700/90 dark:text-amber-200/90">
-                        {t('toolCall.imagePlugin.retryCaveat')}
-                      </p>
-                      {parsedError ? (
-                        <p className="break-all rounded-md bg-background/70 px-2 py-1.5 text-[11px] text-muted-foreground">
-                          {parsedError}
-                        </p>
-                      ) : null}
-                    </div>
-                  </div>
-                  <div className="flex justify-end">
-                    <Button size="sm" onClick={() => void handleRetry()} disabled={!toolUseId}>
-                      {t('action.retry', { ns: 'common' })}
-                    </Button>
-                  </div>
-                </motion.div>
-              ) : isRunning ? (
+              {isRunning ? (
                 <motion.div
                   initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}

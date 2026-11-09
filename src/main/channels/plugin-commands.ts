@@ -18,6 +18,7 @@ import {
   handleStats
 } from './plugin-command-handlers'
 import { stripLeadingAtMention } from './channel-cancel-commands'
+import { logDebug, logInfo } from '../lib/logger'
 
 // Re-export shared types for external consumers
 export type { CommandContext, CommandResult, CommandHandler } from './plugin-command-handlers'
@@ -67,7 +68,8 @@ export async function tryHandleCommand(ctx: CommandContext): Promise<boolean | s
   const content = stripAtMention(raw)
   if (!content.startsWith('/')) return false
 
-  console.log(
+  logDebug(
+    'main',
     `[PluginCommand] Detected command in raw="${raw.slice(0, 80)}" → parsed="${content.slice(0, 80)}"`
   )
 
@@ -93,7 +95,8 @@ export async function tryHandleCommand(ctx: CommandContext): Promise<boolean | s
         })
       }
     }
-    console.log(
+    logInfo(
+      'main',
       `[PluginCommand] /${cmd} delegating to agent loop for plugin ${ctx.pluginId} chat ${ctx.chatId}`
     )
     return result.rewriteContent
@@ -116,6 +119,6 @@ export async function tryHandleCommand(ctx: CommandContext): Promise<boolean | s
     }
   }
 
-  console.log(`[PluginCommand] Handled /${cmd} for plugin ${ctx.pluginId} chat ${ctx.chatId}`)
+  logInfo('main', `[PluginCommand] Handled /${cmd} for plugin ${ctx.pluginId} chat ${ctx.chatId}`)
   return true
 }

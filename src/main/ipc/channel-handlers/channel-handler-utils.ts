@@ -5,8 +5,6 @@
  */
 
 import { ipcMain } from 'electron'
-import * as fs from 'fs'
-import * as path from 'path'
 import { nanoid } from 'nanoid'
 import { ChannelManager } from '../../channels/channel-manager'
 import {
@@ -202,51 +200,9 @@ export async function normalizeQrDisplayUrl(
   return await captureQrElementAsDataUrl(normalized)
 }
 
-export function resolveSourceFileName(source: string, fallback: string): string {
-  const value = source.trim()
-  if (/^https?:\/\//i.test(value)) {
-    try {
-      const url = new URL(value)
-      const fileName = path.basename(url.pathname)
-      return decodeURIComponent(fileName || fallback)
-    } catch {
-      return fallback
-    }
-  }
-
-  const sanitized = value.split('?')[0]
-  return path.basename(sanitized) || fallback
-}
-
-export async function readBinarySource(
-  source: string,
-  fallbackName: string
-): Promise<{ buffer: Buffer; fileName: string }> {
-  const value = source.trim()
-  if (!value) {
-    throw new Error('File path is empty')
-  }
-
-  if (/^https?:\/\//i.test(value)) {
-    const response = await fetch(value)
-    if (!response.ok) {
-      throw new Error(`Download URL failed: HTTP ${response.status}`)
-    }
-    return {
-      buffer: Buffer.from(await response.arrayBuffer()),
-      fileName: resolveSourceFileName(value, fallbackName)
-    }
-  }
-
-  if (!fs.existsSync(value)) {
-    throw new Error(`File not found: ${value}`)
-  }
-
-  return {
-    buffer: fs.readFileSync(value),
-    fileName: resolveSourceFileName(value, fallbackName)
-  }
-}
+// 媒体来源读取已搬到渠道层（`channels/channel-media-source.ts`）—— 渠道服务层要用它，
+// 而渠道层 import IPC 工具会绕成循环依赖。这里 re-export 保持既有调用方不变。
+export { readBinarySource, resolveSourceFileName } from '../../channels/channel-media-source'
 
 export async function readPlugins(): Promise<ChannelInstance[]> {
   return await readChannelPlugins()

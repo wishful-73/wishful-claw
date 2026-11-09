@@ -4,15 +4,8 @@
  * Extracted from channel-handlers.ts.
  */
 
-import * as fs from 'fs'
-import * as path from 'path'
-import { FeishuMediaApi } from '../../channels/providers/feishu/feishu-api'
 import type { FeishuService } from '../../channels/providers/feishu/feishu-service'
-import {
-  activeChannelManager,
-  registerChannelMessagePackHandler,
-  readBinarySource
-} from './channel-handler-utils'
+import { activeChannelManager, registerChannelMessagePackHandler } from './channel-handler-utils'
 import { startFeishuInstall, pollFeishuInstall } from '../../channels/providers/feishu/feishu-install'
 
 export function registerFeishuHandlers(): void {
@@ -26,17 +19,10 @@ export function registerFeishuHandlers(): void {
       if (!service?.api) return { error: 'Feishu plugin not running or not found' }
 
       try {
-        let buf: Buffer
-        const src = args.filePath.trim()
-        if (/^https?:\/\//i.test(src)) {
-          buf = await FeishuMediaApi.downloadUrl(src)
-        } else {
-          if (!fs.existsSync(src)) return { error: `File not found: ${src}` }
-          buf = fs.readFileSync(src)
-        }
-        const fileName = path.basename(src.split('?')[0]) || 'image.png'
-        const imageKey = await service.api.media.uploadImage(buf, fileName)
-        const result = await service.api.media.sendImageMessage(args.chatId, imageKey)
+        const result = await service.sendMedia(args.chatId, {
+          kind: 'image',
+          source: args.filePath
+        })
         return { ok: true, messageId: result.messageId }
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) }
@@ -49,6 +35,10 @@ export function registerFeishuHandlers(): void {
     pluginId: string
     chatId: string
     filePath: string
+    /**
+     * @deprecated 从未有调用方传过。统一入口 `sendMedia` 按扩展名推飞书的
+     * `file_type`；需要精确控制请直接用 `service.api.media.uploadFile`。
+     */
     fileType?: string
   }>('plugin:feishu:send-file', async (args) => {
     const service = activeChannelManager?.getService(args.pluginId) as
@@ -57,26 +47,10 @@ export function registerFeishuHandlers(): void {
     if (!service?.api) return { error: 'Feishu plugin not running or not found' }
 
     try {
-      let buf: Buffer
-      const src = args.filePath.trim()
-      if (/^https?:\/\//i.test(src)) {
-        buf = await FeishuMediaApi.downloadUrl(src)
-      } else {
-        if (!fs.existsSync(src)) return { error: `File not found: ${src}` }
-        buf = fs.readFileSync(src)
-      }
-      const fileName = path.basename(src.split('?')[0]) || 'file'
-      const ext = path.extname(fileName).toLowerCase().replace('.', '')
-      const typeMap: Record<string, 'opus' | 'mp4' | 'pdf' | 'doc' | 'xls' | 'ppt' | 'stream'> = {
-        opus: 'opus', mp4: 'mp4', pdf: 'pdf', doc: 'doc', docx: 'doc',
-        xls: 'xls', xlsx: 'xls', ppt: 'ppt', pptx: 'ppt'
-      }
-      const fileType =
-        (args.fileType as 'opus' | 'mp4' | 'pdf' | 'doc' | 'xls' | 'ppt' | 'stream' | undefined) ??
-        typeMap[ext] ??
-        'stream'
-      const fileKey = await service.api.media.uploadFile(buf, fileName, fileType)
-      const result = await service.api.media.sendFileMessage(args.chatId, fileKey)
+      const result = await service.sendMedia(args.chatId, {
+        kind: 'file',
+        source: args.filePath
+      })
       return { ok: true, messageId: result.messageId }
     } catch (err) {
       return { error: err instanceof Error ? err.message : String(err) }
@@ -346,10 +320,10 @@ export async function executeFeishuChannelTool(
     case 'plugin:feishu:send-image': {
       if (!service?.api) return { error: 'Feishu plugin not running or not found' }
       try {
-        const { buffer } = await readBinarySource(String(args.filePath ?? ''), 'image.png')
-        const fileName = String(args.filePath ?? '').split('?')[0].split(/[\\/]/).pop() || 'image.png'
-        const imageKey = await service.api.media.uploadImage(buffer, fileName)
-        const result = await service.api.media.sendImageMessage(String(args.chatId ?? ''), imageKey)
+        const result = await service.sendMedia(String(args.chatId ?? ''), {
+          kind: 'image',
+          source: String(args.filePath ?? '')
+        })
         return { ok: true, messageId: result.messageId }
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) }
@@ -358,9 +332,10 @@ export async function executeFeishuChannelTool(
     case 'plugin:feishu:send-file': {
       if (!service?.api) return { error: 'Feishu plugin not running or not found' }
       try {
-        const { buffer, fileName } = await readBinarySource(String(args.filePath ?? ''), 'file')
-        const fileKey = await service.api.media.uploadFile(buffer, fileName, 'stream')
-        const result = await service.api.media.sendFileMessage(String(args.chatId ?? ''), fileKey)
+        const result = await service.sendMedia(String(args.chatId ?? ''), {
+          kind: 'file',
+          source: String(args.filePath ?? '')
+        })
         return { ok: true, messageId: result.messageId }
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) }

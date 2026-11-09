@@ -9,9 +9,9 @@
 
 | 编号 | 标题 | 状态 | 上位 | 依据 |
 |---|---|---|---|---|
-| [S-352](requirements/S-352.md) | 渠道出站媒体通道 —— 统一接口只认文本，飞书靠私有 IPC 直通 | **登记，未开工** | **R-5** | 统一接口 `MessagingChannelService`（`channel-types.ts:132-156`）出站只有 `sendMessage(chatId, content: string)` / `replyMessage(messageId, content: string)`；而入站 `ChannelIncomingMessageData`（`:97-127`）有 `images` / `audio` / `mediaRefs` / `msgType` **四个媒体字段** ⇒ **收的方向有媒体，发的方向没有**。七家实况：飞书有 `sendImageMessage`/`sendFileMessage` 但绕过统一接口走私有 IPC（`channel-feishu-handlers.ts:39/79/352/363`）；微信 `sendItems` 是开放式 `item_list` 未验证语音；**钉钉 / Discord / QQ / Telegram / 企业微信五家纯文本** |
+| [S-352](requirements/S-352.md) | 渠道出站媒体通道 —— 统一接口只认文本，飞书/微信靠私有 IPC 直通 | **刀 0 / 刀 1 已交付；刀 2 微信待做** | **R-5** | 统一接口 `MessagingChannelService`（`channel-types.ts:132-156`）出站只有 `sendMessage(chatId, content: string)` / `replyMessage(messageId, content: string)`；而入站 `ChannelIncomingMessageData`（`:97-127`）有 `images` / `audio` / `mediaRefs` / `msgType` **四个媒体字段** ⇒ **收的方向有媒体，发的方向没有**。**八家**实况：飞书 `feishu-media-api.ts:199/220` 有，绕过统一接口走私有 IPC；**微信 `weixin-service.ts:159/168` 也有**（`sendImage` / `sendFile`，此前登记误判为「未验证」）；**钉钉 / Discord / QQ / Telegram / 企业微信 / WhatsApp 六家纯文本** |
 
-> **开工前置**：七家的媒体发送能力逐家实机验证（S-352 §5.1）—— 没验完不写接口，猜着设计的抽象会被某一家的限制推翻。尤其要确认「钉钉 / 企业微信机器人到底能不能发语音」，如果确认不能，`supportedMediaKinds` 为空**是正确结论，不是失败**。
+> **能力实测口径**：八家已全部实读（S-352 §3.3）。**飞书 + 微信有凭证**（老大 10:55），其余六家无凭证 ⇒ `supportedMediaKinds` 留空、自动降级发文本，**这是正确结论，不是失败**。
 
 ## 一、挂账与阻塞继承（6 条，不占刀序）
 > 前 5 条从 [../iter-v3-8/raw-requirements.md](../iter-v3-8/raw-requirements.md) §二 原样继承，**没有一条在本迭代变得可做**。状态行不改，只换挂靠的迭代文档。

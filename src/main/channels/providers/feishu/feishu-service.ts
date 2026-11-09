@@ -3,6 +3,11 @@
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
  * Modified by the Wishful 心相 team for Wishful Claw.
+ *
+ * 500 行豁免（2026-11-09，行数以实际为准，AGENTS.md §大文件拆分 第 5 条第 3 类）：
+ * 飞书渠道服务主体 —— WS 生命周期、流式卡片轮转、入站媒体下载、群名/用户名缓存都在
+ * 这一份里，它们共享 `_cardSequences` / `_chatNameCache` 等多份可变状态，拆开就要新增
+ * 中间层。出站媒体（S-352 刀 1）已抽到 `feishu-outbound-media.ts`，这里只剩渠道服务本体。
  */
 
 import * as Lark from '@larksuiteoapi/node-sdk'
@@ -13,9 +18,11 @@ import type {
   ChannelGroup,
   MessagingChannelService,
   ChannelStreamingHandle,
-  ChannelIncomingMessageData
+  ChannelIncomingMessageData,
+  ChannelMediaPayload
 } from '../../channel-types'
 import { FeishuApi } from './feishu-api'
+import { FEISHU_SUPPORTED_MEDIA_KINDS, sendFeishuMedia } from './feishu-outbound-media'
 import { logDebug, logInfo } from '../../../lib/logger'
 
 /** Throttle interval for card updates (ms) */
@@ -69,6 +76,7 @@ export class FeishuService implements MessagingChannelService {
   readonly pluginId: string
   readonly pluginType = 'feishu-bot'
   readonly supportsStreaming = true
+  readonly supportedMediaKinds = FEISHU_SUPPORTED_MEDIA_KINDS
 
   private _instance: ChannelInstance
   private _notify: (event: ChannelEvent) => void
@@ -345,6 +353,11 @@ export class FeishuService implements MessagingChannelService {
 
   async replyMessage(messageId: string, content: string): Promise<{ messageId: string }> {
     return this.api.replyMessage(messageId, content)
+  }
+
+  /** 出站媒体。实现见 `feishu-outbound-media.ts`（本文件贴着 500 行上限） */
+  async sendMedia(chatId: string, media: ChannelMediaPayload): Promise<{ messageId: string }> {
+    return await sendFeishuMedia(this.api, chatId, media)
   }
 
   async getGroupMessages(chatId: string, count?: number): Promise<ChannelMessage[]> {

@@ -154,3 +154,22 @@
   - **门禁**：`npm run typecheck` 三配置 0 错；`npm test` **131/131**；`token-format` 单套 **28 assertions passed**。
   - **一处判断**：没排真机截图验收。`B` 与 `G` 同宽同长、只是字母变化，布局风险为零；dev 起界面一眼即可，不值得单占一刀。
   - **刀 9~11 排位不变**，从媒体线继续。
+- **11:03 老大报缺陷：dev 默认服务商选中了未启用的 Ollama** ⇒ 立 [S-359](requirements/S-359.md)，刀序 **14**（§二·丁）。
+  - **先纠我自己的判断**：10:52 我第一次的回答定性成「老问题、给绕过方案」，被老大 10:59 否掉 —— 「绕什么？这是以前一直没有的问题……是当前迭代弄出来的」。查证后**老大对**：引入点是 `7fc9647a`（2026-11-05，S-318 A 段），随 **v1.0.8**（`b68f8e37`）发布，正是本迭代 base 的上一版；v1.0.8 之前 `ensureBuiltinPresets` 没有这段挑选，只有「无 active 取 `providers[0]`」。
+  - **第二次判断错**：我把判据写成分级「1. enabled&&apiKey / 2. enabled&&免 key / 3. providers[0]」，被老大 11:03 直接否 —— 「不看 enabled 不看是否启用 那看什么？必须是启用的。」`providers[0]` 那一档就是绕过 `enabled` 的口子，删掉。
+  - **根因**：`nextProviders.find((p) => p.requiresApiKey === false || !!p.apiKey) ?? nextProviders[0]` 零 `enabled` 判断；内置投影默认 `enabled: false`（`provider-materialization.ts:64`），Ollama 免 key 且排在 preset 第 6 位 ⇒ 空配置启动必中。选中结果落盘后 `activeExists` 恒真 ⇒ 永久钉死，用户看到「选了服务商但没有模型」。
+  - **实测证据**：dev 数据目录五家 `enabled && apiKey && models>0`（routin.ai / OpenCode Go / 商汤 / agnes / 小米套餐）被晾着，`activeProviderId` 指向 `enabled=false / apiKey='' / models=[]` 的 Ollama。
+  - **判据分裂是本轮的真正发现**：横幅（`use-input-area-selectors.ts:218-225`）本来就写对了 `enabled && (免 key || 有 key)`，store 五处全不看 enabled ⇒ 「横幅说你有五家能用的，store 塞给你一个停用的」。**一套判据只能有一份实现。**
+  - **修复**：`provider-materialization.ts` 新增 `isProviderUsable` / `pickActiveProvider` / `resolveActiveProvider` / `pickDefaultModel`（纯函数，plain-node 可测）；`ensureBuiltinPresets`、`getActiveProvider`、`deleteProvider`（两处）、`isProviderAvailableForModelSelection`、横幅 selector 全部收敛到这一份。
+  - **迁移必须一起做**：老盘 `activeProviderId` 已指着 Ollama、`activeExists` 恒真，光改判据不会重挑 ⇒ `resolveActiveProvider` 把「存在」升级成「存在且可用」（悬空 / 停用 / 无凭据都失效）。
+  - **空集合行为（老大 11:06）**：不选，`activeProviderId = null`；既有横幅会亮「未配置 API Key，点击此处打开设置」。`send-model-resolution.ts:72` 已有 `if (!provider) return null`，调用方吃得下 —— **不需要新造空状态**。
+  - **不做模型数过滤**：老大只要求 `enabled`；用户启用 Ollama 而没拉模型是他自己的事，底座不替他否决。
+  - **门禁**：`npm run typecheck` 三配置 0 错；`npm test` **131/131**；`provider-presets` 单套 **579 assertions**（新增 `active-selection-suite.ts` 19 条断言）。
+- **11:20 老大再纠一层：模型本身也有启用状态** ⇒ 同一需求的下沉返工，并入 S-359 这一刀。
+  - 原话：「逻辑还是有问题，我们模型本身也是有是否启用状态的，现在默认到小米套餐上了 但是模型本身是没有启用的模型」。
+  - **实测**：`activeProviderId = xiaomi-coding`（provider `enabled=true` ✅），`activeModelId = "mimo-v2.5-pro"` —— 该模型 `enabled=false`；小米套餐里唯一启用的是 `mimo-v2.6-flash`，被跳过。
+  - **根因下沉到 `pickDefaultModel`**：第一档 `m.id === provider.defaultModel` **不看 `enabled`**，`mimo-v2.5-pro` 正是 preset 的 `defaultModel`，直接命中；末档 `models[0]` 更是无条件。⇒ 用户把 preset 默认模型关掉，每次启动都被拨回来。
+  - **修正**：`isProviderUsable` 增加 `models.some(m => m.enabled)`；`pickDefaultModel` 三档全部要求 `enabled`、删掉 `models[0]` 兜底（无启用模型返回 `undefined`）；`defaultModel` 从「选择依据」降级为「启用时才采用的提示值」。
+  - **`activeModelId` 也迁移**：`ensureBuiltinPresets` 从「为空才补」改为「不存在 **或未启用** 就重挑」—— 否则老盘里那个停用模型永远拨不回来。
+  - **判据现在两层一致**：服务商层与服务商内的模型层都以 `enabled` 为硬门槛；插件侧 `app-plugin-store.ts:176-178` 早就是这套双层判断，本次只是把 store 侧对齐。
+  - **测试**：新增「零模型不可用 / 全部模型停用不可用 / `defaultModel` 指向停用模型时跳过（小米场景）/ 全停用无默认模型」4 条断言，套件 579 assertions。

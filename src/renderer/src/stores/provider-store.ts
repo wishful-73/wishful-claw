@@ -19,6 +19,11 @@ import {
   mergeManagedModelMissingFields,
   normalizeModelKey
 } from './managed-models'
+import {
+  isProviderUsable,
+  pickActiveProvider,
+  pickDefaultModel
+} from './provider-materialization'
 
 export const useProviderStore = create<ProviderState>()(
   persist(
@@ -36,13 +41,13 @@ export const useProviderStore = create<ProviderState>()(
 
       getActiveProvider: () => {
         const { providers, activeProviderId } = get()
-        if (!activeProviderId) return providers[0] ?? null
-        const found = providers.find((p) => p.id === activeProviderId)
-        if (found) return found
-        // S-318：activeProviderId 可能指向已被剔除的记录（preset 在公开面移除）。
-        // 直接返回 null 会让所有 inherit 会话连消息都发不出去，所以落一手 ——
-        // 与 `deleteProvider` 删除激活项时的挑选策略保持一致：auth-ready 优先。
-        return providers.find((p) => p.requiresApiKey === false || !!p.apiKey) ?? providers[0] ?? null
+        // S-359：只有「已启用 + 有凭据」的一家才算 active。指向停用记录时回落，
+        // 和启动迁移（`resolveActiveProvider`）保持同一判据。
+        if (activeProviderId) {
+          const found = providers.find((p) => p.id === activeProviderId)
+          if (found && isProviderUsable(found)) return found
+        }
+        return pickActiveProvider(providers)
       },
 
       getProviderById: (id) => get().providers.find((p) => p.id === id) ?? null,
@@ -79,28 +84,18 @@ export const useProviderStore = create<ProviderState>()(
             }
           }
           const providers = state.providers.filter((p) => p.id !== id)
+          // S-359：删掉的就是当前激活项时，只能换成另一家「已启用 + 有凭据」的。
+          // 旧写法先塞 `providers[0]`、再用「免 key 或有 key」覆盖，两处都不看 enabled，
+          // 会落到一个停用的服务商上。一家都没有就置空，由输入框横幅引导配置。
           let activeProviderId =
             state.activeProviderId === id
-              ? (providers[0]?.id ?? null)
+              ? (pickActiveProvider(providers)?.id ?? null)
               : state.activeProviderId
-          // Bug fix: when the deleted provider was active, fall back to an
-          // auth-ready provider first so the composer doesn't show a stale
-          // "no API key" banner while a fully configured provider exists.
-          if (state.activeProviderId === id && providers.length > 0) {
-            const authReady =
-              providers.find((p) => p.requiresApiKey === false || !!p.apiKey) ?? null
-            if (authReady) activeProviderId = authReady.id
-          }
           // Keep activeModelId valid for the new active provider.
           let activeModelId = state.activeModelId
           const nextActive = providers.find((p) => p.id === activeProviderId)
           if (nextActive && !nextActive.models.some((m) => m.id === activeModelId)) {
-            const fallbackModel =
-              nextActive.models.find((m: AIModelConfig) => m.id === nextActive.defaultModel) ??
-              nextActive.models.find((m: AIModelConfig) => m.enabled && (!m.category || m.category === 'chat')) ??
-              nextActive.models.find((m: AIModelConfig) => m.enabled) ??
-              nextActive.models[0]
-            activeModelId = fallbackModel?.id ?? ''
+            activeModelId = pickDefaultModel(nextActive)?.id ?? ''
           }
           return { providers, activeProviderId, activeModelId }
         })
@@ -402,8 +397,9 @@ export function isProviderAuthReady(provider: AIProvider | null | undefined): bo
 export function isProviderAvailableForModelSelection(
   provider: AIProvider | null | undefined
 ): boolean {
-  if (!provider?.enabled) return false
-  return isProviderAuthReady(provider)
+  // S-359：判据收敛到 `isProviderUsable`（enabled 硬门槛 + 有凭据），
+  // 与启动迁移、`getActiveProvider`、composer 横幅共用同一份实现。
+  return isProviderUsable(provider)
 }
 
 export function modelSupportsBuiltinSearch(

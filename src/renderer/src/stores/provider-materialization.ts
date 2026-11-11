@@ -1,4 +1,4 @@
-import type { AIProvider, BuiltinProviderPreset } from '../../../shared/types/provider'
+import type { AIProvider, AIModelConfig, BuiltinProviderPreset } from '../../../shared/types/provider'
 import { builtinProviderPresets } from './providers'
 
 /**
@@ -131,6 +131,85 @@ export function isUnownedBuiltin(provider: AIProvider): boolean {
 /** R-9: whether a record belongs in persisted storage. */
 export function shouldPersist(provider: AIProvider): boolean {
   return !provider.virtual
+}
+
+/**
+ * S-359: a provider is **usable** only when the user has enabled it, it can
+ * authenticate, **and** at least one of its models is enabled.
+ *
+ * `enabled` is a hard gate at both levels, never a tie-breaker:
+ * - provider level: every builtin projects with `enabled: false` (see
+ *   `createProviderFromPreset`), and `ollama` / `lmstudio` carry
+ *   `requiresApiKey: false`, so a fresh install auto-selected a disabled Ollama.
+ * - model level: a provider whose models are all switched off cannot answer either.
+ *   Picking it lands the user on "selected a provider, no usable model" — the same
+ *   symptom one layer down.
+ *
+ * Kept identical to `isProviderAuthReady` + `enabled` + any enabled model: the
+ * composer banner (`use-input-area-selectors`) already used that pair, and the two
+ * must never drift apart again.
+ */
+export function isProviderUsable(provider: AIProvider | null | undefined): boolean {
+  if (!provider || provider.enabled !== true) return false
+  const authMode = provider.authMode ?? 'apiKey'
+  if (authMode !== 'apiKey') return false
+  if (!(provider.requiresApiKey === false || (provider.apiKey ?? '').trim().length > 0)) return false
+  return provider.models.some((m) => m.enabled)
+}
+
+/**
+ * Pick a sensible default model for a provider.
+ *
+ * S-359: only enabled models qualify. `defaultModel` is a preset hint, not a user
+ * choice — a user who switches that model off must not keep getting it back on every
+ * start. There is deliberately no `models[0]` fallback: when nothing is enabled the
+ * caller gets `undefined` and the selection is left empty instead of pointing at a
+ * model the user disabled.
+ */
+export function pickDefaultModel(provider: AIProvider): AIModelConfig | undefined {
+  return (
+    provider.models.find((m) => m.id === provider.defaultModel && m.enabled) ??
+    provider.models.find((m) => m.enabled && (!m.category || m.category === 'chat')) ??
+    provider.models.find((m) => m.enabled)
+  )
+}
+
+/** First enabled + auth-ready provider with an enabled model, or null. */
+export function pickActiveProvider(providers: AIProvider[]): AIProvider | null {
+  return providers.find((p) => isProviderUsable(p)) ?? null
+}
+
+export interface ActiveResolution {
+  providerId: string | null
+  /** Only meaningful when `changed`: the default model of the newly picked provider. */
+  modelId?: string
+  /** True when the current selection had to be replaced (dangling, disabled or unusable). */
+  changed: boolean
+}
+
+/**
+ * S-359: resolve the active provider for startup.
+ *
+ * The current selection is kept only while it is still usable — a provider that is
+ * missing (S-318 removed a preset), disabled by the user, or has no credentials must
+ * be replaced. Replacing with "the first provider in the list" is what pinned users
+ * to a disabled Ollama, so the fallback is `pickActiveProvider` and may come back
+ * empty: an empty selection is correct when nothing is enabled — the composer banner
+ * then tells the user to configure one.
+ */
+export function resolveActiveProvider(
+  providers: AIProvider[],
+  currentActiveId: string | null | undefined
+): ActiveResolution {
+  const current = currentActiveId
+    ? providers.find((p) => p.id === currentActiveId)
+    : undefined
+  if (current && isProviderUsable(current)) {
+    return { providerId: current.id, changed: false }
+  }
+  const picked = pickActiveProvider(providers)
+  if (!picked) return { providerId: null, modelId: '', changed: true }
+  return { providerId: picked.id, modelId: pickDefaultModel(picked)?.id ?? '', changed: true }
 }
 
 /**

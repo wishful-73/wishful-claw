@@ -7,10 +7,12 @@ import { runRegistrySuite } from './registry-suite'
 import { runUpgradeSuite } from './upgrade-suite'
 import { runProjectionSuite } from './projection-suite'
 import { runLegacyUpgradeSuite } from './legacy-upgrade-suite'
+import { runActiveSelectionSuite } from './active-selection-suite'
 
 runRegistrySuite()
 runUpgradeSuite()
 runProjectionSuite()
 runLegacyUpgradeSuite()
+runActiveSelectionSuite()
 
 console.log(`Provider preset consistency checks passed (${checks} assertions, ${builtinProviderPresets.length} presets).`)

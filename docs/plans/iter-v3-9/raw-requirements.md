@@ -37,6 +37,14 @@
 |---|---|---|---|---|
 | [S-358](requirements/S-358.md) | token 数量单位 `G` → `B` —— 按 AI 行业通用量级口径显示 | **✅ 已实施（2026-11-11 10:4x）** | 项目级（UI 显示口径） | `format-tokens.ts:17-22` 的 `TOKEN_UNITS` 按 **SI 前缀**选了 `G`（Giga），而 AI 行业描述参数 / token 用量通行 **`B`（Billion）**；`G` 在中文语境会被读成 GB。**这是口径变更不是缺陷** —— `G` 是 S-194 登记时的原始口径（老大原话「我在考虑增加 G 这些单位」）。改动 = 一个字面量 + 3 处注释 + 4 处断言（`tests/token-format/program.ts:46/55/56/71`）+ 1 条防回退断言，26 个调用点与 C# 侧零改动。门禁：typecheck 三配置 0 错 / `npm test` 131/131 |
 
+### 〇·丁、追加（2026-11-11 11:03 老大报缺陷，1 条）
+
+> **P1，v1.0.8 回归。** 不来自 dev 审查，也不属渠道媒体线。刀序见 [plan.md](plan.md) §二·丁。
+
+| 编号 | 标题 | 状态 | 上位 | 依据 |
+|---|---|---|---|---|
+| [S-359](requirements/S-359.md) | 默认服务商选中了未启用的 Ollama —— 自动挑选判据缺 `enabled` 硬门槛 | **✅ 已实施（2026-11-11 11:1x）** | 项目级（AI 服务商底座） | 引入点 `7fc9647a`（S-318 A 段，随 v1.0.8 `b68f8e37` 发布）：`ensureBuiltinPresets` 的兜底写 `nextProviders.find((p) => p.requiresApiKey === false \|\| !!p.apiKey) ?? nextProviders[0]`，**零 `enabled` 判断**。内置投影默认 `enabled: preset.defaultEnabled ?? false`（`provider-materialization.ts:64`），Ollama 免 key 且排在 preset 第 6 位 ⇒ 空配置启动必中；选中结果落盘后 `activeExists` 恒真 ⇒ 永久钉死。dev 实测：盘里五家 `enabled && apiKey && models>0` 被晾着，active 指向 `enabled=false / apiKey='' / models=[]` 的 Ollama。**判据分裂**：横幅（`use-input-area-selectors.ts:218-225`）本来就对（`enabled && (免 key \|\| 有 key)`），store 五处全不看 enabled。修复 = `isProviderUsable`（**服务商 `enabled` + 有凭据 + 至少一个启用模型**，先筛再挑）+ `resolveActiveProvider` / `activeModelId` 启动迁移（存在且可用才算有效）+ 五处替换。**第二层（老大 11:20）**：服务商选对后模型仍是停用的 —— `pickDefaultModel` 第一档 `m.id === provider.defaultModel` 不看 `enabled`、末档 `models[0]` 无条件；实测小米套餐选中 `enabled=false` 的 `mimo-v2.5-pro`，唯一启用的 `mimo-v2.6-flash` 被跳过。⇒ `pickDefaultModel` 只从启用模型里挑。**空集合 = 不选**，由既有横幅引导配置（老大 11:06）。门禁：typecheck 三配置 0 错 / `npm test` 131/131 / `provider-presets` 579 assertions |
+
 ## 一、挂账与阻塞继承（6 条，不占刀序）
 > 前 5 条从 [../iter-v3-8/raw-requirements.md](../iter-v3-8/raw-requirements.md) §二 原样继承，**没有一条在本迭代变得可做**。状态行不改，只换挂靠的迭代文档。
 

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using WishfulClaw.Agent.Executors;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
 
@@ -8,7 +9,8 @@ internal readonly record struct AgentRunContext(
     string Scope,
     string CollaborationMode,
     string RuntimeRole,
-    bool CodegraphEnabled = false);
+    bool CodegraphEnabled = false,
+    string? ChannelProvider = null);
 
 /// <summary>
 /// Turns a worker request into the run context the admission check reads, and answers "is this tool
@@ -82,11 +84,21 @@ internal static class AgentRunContextPolicy
             };
         }
 
+        // 只有渠道会话才记 provider：三个通用出站媒体工具的可见性靠它判（S-354 D-2）。
+        // 非渠道会话留空 —— 那三个工具的 VisibleScopes 只有 "*:channel@*"，本来就不该出现，
+        // 在声明层已经答过了，这里不重复表态。
+        var channelProvider = IsChannelSession(parameters)
+            ? AgentRuntimeChannelPluginExecutor.ResolveProvider(
+                JsonHelpers.GetString(parameters, "pluginType"),
+                JsonHelpers.GetString(parameters, "pluginId"))
+            : null;
+
         return new AgentRunContext(
             scope,
             collaborationMode,
             runtimeRole,
-            JsonHelpers.GetBool(parameters, "codegraphEnabled", false));
+            JsonHelpers.GetBool(parameters, "codegraphEnabled", false),
+            channelProvider);
     }
 
     public static string ResolveAvailableMode(JsonElement parameters, AgentRunContext context)
@@ -147,6 +159,35 @@ internal static class AgentRunContextPolicy
         !toolName.StartsWith("codegraph_", StringComparison.Ordinal) || context.CodegraphEnabled;
 
     /// <summary>
+    /// 渠道出站媒体工具在「这一家渠道根本发不出去」时不该出现。
+    ///
+    /// 判据与执行期同源（<see cref="AgentRuntimeChannelPluginExecutor.SupportsOutboundMedia"/>）：
+    /// **能路由才可见**。此前三个工具对所有渠道会话一视同仁，钉钉群里的模型看得见
+    /// <c>ChannelSendAudio</c>、一调就是 <c>Unsupported channel plugin tool</c> —— 可见性和能力
+    /// 在两个文件里各说各话，谁都没错，合起来错（S-354 D-2）。
+    ///
+    /// 非渠道上下文一律放行：这三个工具的 <c>VisibleScopes</c> 本来就只有 <c>*:channel@*</c>，
+    /// 是否可见交给声明层回答，这里不重复否决。
+    /// </summary>
+    private static bool IsChannelMediaToolAvailable(
+        AgentRunContext context,
+        bool channelSession,
+        string toolName)
+    {
+        if (!AgentRuntimeChannelPluginExecutor.IsChannelMediaTool(toolName))
+        {
+            return true;
+        }
+
+        if (!channelSession)
+        {
+            return true;
+        }
+
+        return AgentRuntimeChannelPluginExecutor.SupportsOutboundMedia(context.ChannelProvider);
+    }
+
+    /// <summary>
     /// Admission check for a single tool in a single run context.
     ///
     /// This is the enforcement layer, not the declaration layer. A run-level feature switch is
@@ -162,6 +203,11 @@ internal static class AgentRunContextPolicy
         bool channelSession = false)
     {
         if (!IsRunEnabledTool(context, toolName))
+        {
+            return false;
+        }
+
+        if (!IsChannelMediaToolAvailable(context, channelSession, toolName))
         {
             return false;
         }

@@ -22,11 +22,13 @@ public static class AgentRuntimeChannelPluginExecutor
 {
     private static readonly HashSet<string> ChannelPluginToolNames = new(StringComparer.Ordinal)
     {
-        "FeishuSendImage", "FeishuSendFile", "FeishuListChatMembers", "FeishuAtMember",
+        "FeishuSendImage", "FeishuSendFile", "FeishuSendAudio",
+        "FeishuListChatMembers", "FeishuAtMember",
         "FeishuSendUrgent", "FeishuBitableListApps", "FeishuBitableListTables",
         "FeishuBitableListFields", "FeishuBitableGetRecords", "FeishuBitableCreateRecords",
         "FeishuBitableUpdateRecords", "FeishuBitableDeleteRecords",
-        "WeixinSendImage", "WeixinSendFile", "ChannelSendImage", "ChannelSendFile"
+        "WeixinSendImage", "WeixinSendFile", "WeixinSendAudio",
+        "ChannelSendImage", "ChannelSendFile", "ChannelSendAudio"
     };
 
     private static readonly JsonWriterOptions WriterOptions = new()
@@ -36,9 +38,17 @@ public static class AgentRuntimeChannelPluginExecutor
 
     public static bool IsChannelPluginTool(string toolName) => ChannelPluginToolNames.Contains(toolName);
 
+    /// <summary>
+    /// 三个「通用出站媒体」工具 —— 走 <see cref="ResolveGenericRoute"/>、渠道类型从 run 参数推的
+    /// 那一批。<c>FeishuSendImage</c> 之类写死渠道的不算：它们在别的渠道可见本身就说不通，但
+    /// 那是另一个问题，别混进这条判据。
+    /// </summary>
+    public static bool IsChannelMediaTool(string toolName) =>
+        toolName is "ChannelSendImage" or "ChannelSendFile" or "ChannelSendAudio";
+
     public static bool RequiresApproval(string toolName) =>
-        toolName is "FeishuSendImage" or "FeishuSendFile" or "FeishuAtMember" or
-                     "FeishuSendUrgent" or "WeixinSendImage" or "WeixinSendFile";
+        toolName is "FeishuSendImage" or "FeishuSendFile" or "FeishuSendAudio" or "FeishuAtMember" or
+                     "FeishuSendUrgent" or "WeixinSendImage" or "WeixinSendFile" or "WeixinSendAudio";
 
     public static async Task<string> ExecuteAsync(
         AgentRuntimeNativeToolCall call, JsonElement parameters,
@@ -69,32 +79,35 @@ public static class AgentRuntimeChannelPluginExecutor
         return call.Name switch
         {
             "FeishuSendImage" => ("plugin:feishu:send-image", w => { w.WriteString("chatId", R(call, "chat_id")); w.WriteString("filePath", R(call, "file_path")); }),
-            "FeishuSendFile" => ("plugin:feishu:send-file", w => { w.WriteString("chatId", R(call, "chat_id")); w.WriteString("filePath", R(call, "file_path")); WOpt(w, call, "file_type", "file_type"); }),
+            "FeishuSendFile" => ("plugin:feishu:send-file", w => { w.WriteString("chatId", R(call, "chat_id")); w.WriteString("filePath", R(call, "file_path")); }),
             "WeixinSendImage" => ("plugin:weixin:send-image", w => { w.WriteString("chatId", R(call, "chat_id")); w.WriteString("filePath", R(call, "file_path")); WOpt(w, call, "content", "content"); }),
             "WeixinSendFile" => ("plugin:weixin:send-file", w => { w.WriteString("chatId", R(call, "chat_id")); w.WriteString("filePath", R(call, "file_path")); WOpt(w, call, "content", "content"); }),
+            "WeixinSendAudio" => ("plugin:weixin:send-audio", w => { w.WriteString("chatId", R(call, "chat_id")); w.WriteString("filePath", R(call, "file_path")); WOpt(w, call, "content", "content"); WOptI(w, call, "durationMs", "durationMs"); }),
+            "FeishuSendAudio" => ("plugin:feishu:send-audio", w => { w.WriteString("chatId", R(call, "chat_id")); w.WriteString("filePath", R(call, "file_path")); }),
             "ChannelSendImage" => ResolveGenericRoute(call, parameters, "image"),
             "ChannelSendFile" => ResolveGenericRoute(call, parameters, "file"),
+            "ChannelSendAudio" => ResolveGenericRoute(call, parameters, "audio"),
             "FeishuListChatMembers" => ("plugin:feishu:list-members", w => { w.WriteString("chatId", R(call, "chat_id")); WOptI(w, call, "page_size", "page_size"); WOpt(w, call, "page_token", "page_token"); }),
             "FeishuAtMember" => ("plugin:feishu:send-mention", w =>
             {
                 w.WriteString("chatId", R(call, "chat_id"));
                 w.WriteString("text", R(call, "text"));
                 w.WriteStartArray("userIds");
-                foreach (var uid in JsonHelpers.GetStringArray(call.Input, "user_ids")) w.WriteStringValue(uid);
+                foreach (var uid in RArray(call, "user_ids")) w.WriteStringValue(uid);
                 w.WriteEndArray();
-                w.WriteBoolean("atAll", JsonHelpers.GetBool(call.Input, "at_all", false));
+                w.WriteBoolean("atAll", RBool(call, "at_all", false));
             }),
             "FeishuSendUrgent" => ("plugin:feishu:send-urgent", w =>
             {
                 w.WriteString("messageId", R(call, "message_id"));
                 w.WriteStartArray("userIds");
-                foreach (var uid in JsonHelpers.GetStringArray(call.Input, "user_ids")) w.WriteStringValue(uid);
+                foreach (var uid in RArray(call, "user_ids")) w.WriteStringValue(uid);
                 w.WriteEndArray();
                 w.WriteStartArray("urgentTypes");
-                foreach (var t in JsonHelpers.GetStringArray(call.Input, "urgent_types").Where(x => x is "app" or "sms")) w.WriteStringValue(t);
+                foreach (var t in RArray(call, "urgent_types").Where(x => x is "app" or "sms")) w.WriteStringValue(t);
                 w.WriteEndArray();
             }),
-            "FeishuBitableListApps" => ("plugin:feishu:bitable:list-apps", _ => { }),
+            "FeishuBitableListApps" => ("plugin:feishu:bitable:list-apps", w => WOptI(w, call, "page_size", "page_size")),
             "FeishuBitableListTables" => ("plugin:feishu:bitable:list-tables", w => WReq(w, call, "app_token", "app_token")),
             "FeishuBitableListFields" => ("plugin:feishu:bitable:list-fields", w => { WReq(w, call, "app_token", "app_token"); WReq(w, call, "table_id", "table_id"); }),
             "FeishuBitableGetRecords" => ("plugin:feishu:bitable:get-records", w => { WReq(w, call, "app_token", "app_token"); WReq(w, call, "table_id", "table_id"); WOpt(w, call, "filter", "filter"); WOptI(w, call, "page_size", "page_size"); WOpt(w, call, "page_token", "page_token"); }),
@@ -105,23 +118,50 @@ public static class AgentRuntimeChannelPluginExecutor
         };
     }
 
+    /// <summary>
+    /// 这家渠道的 provider key —— <c>weixin</c> / <c>feishu</c>，认不出返回 null。
+    ///
+    /// 路由（<see cref="ResolveGenericRoute"/>）和工具可见性（<c>AgentRunContextPolicy</c>）共用
+    /// 这一个判断，不各持一份能力表。S-352 的病根正是「注册期说支持、路由期说不认识」，两个
+    /// 文件谁都没错，合起来错 —— 所以这里必须是唯一入口。
+    /// </summary>
+    public static string? ResolveProvider(string? pluginType, string? pluginId)
+    {
+        var type = (pluginType ?? string.Empty).Trim().ToLowerInvariant();
+        if (type.Contains("weixin", StringComparison.Ordinal)) return "weixin";
+        if (type.Contains("feishu", StringComparison.Ordinal)) return "feishu";
+
+        var id = pluginId ?? string.Empty;
+        if (id.Contains("weixin", StringComparison.OrdinalIgnoreCase)) return "weixin";
+        if (id.Contains("feishu", StringComparison.OrdinalIgnoreCase)) return "feishu";
+
+        return null;
+    }
+
+    /// <summary>
+    /// 这家渠道能不能发出站媒体（image / file / audio）。
+    ///
+    /// 判据是「有没有 handler 路由」，不是另立一份 <c>supportedMediaKinds</c> 的副本 —— 那份
+    /// 能力表的真源在 TS 侧（<c>FEISHU_SUPPORTED_MEDIA_KINDS</c> / <c>WEIXIN_SUPPORTED_MEDIA_KINDS</c>），
+    /// C# 侧唯一能反映它的事实就是「这家有没有 send-image / send-file / send-audio 路由」。
+    ///
+    /// 目前两家三种形态都支持。哪天某家只能发图，先改能力表，再让这里按形态细分。
+    /// </summary>
+    public static bool SupportsOutboundMedia(string? provider) => provider is "weixin" or "feishu";
+
     private static (string? channel, Action<Utf8JsonWriter> writeExtra) ResolveGenericRoute(
         AgentRuntimeNativeToolCall call, JsonElement parameters, string kind)
     {
-        var pluginType = (JsonHelpers.GetString(parameters, "pluginType") ??
-                          JsonHelpers.GetString(parameters, "channelType") ?? string.Empty).ToLowerInvariant();
-        var pluginId = JsonHelpers.GetString(parameters, "pluginId") ?? string.Empty;
-        var route = pluginType.Contains("weixin") || pluginId.Contains("weixin", StringComparison.OrdinalIgnoreCase)
-            ? $"plugin:weixin:send-{kind}"
-            : pluginType.Contains("feishu") || pluginId.Contains("feishu", StringComparison.OrdinalIgnoreCase)
-                ? $"plugin:feishu:send-{kind}"
-                : null;
+        var provider = ResolveProvider(
+            JsonHelpers.GetString(parameters, "pluginType") ?? JsonHelpers.GetString(parameters, "channelType"),
+            JsonHelpers.GetString(parameters, "pluginId"));
+        var route = provider is null ? null : $"plugin:{provider}:send-{kind}";
         return (route, w =>
         {
             w.WriteString("chatId", JsonHelpers.GetString(parameters, "externalChatId") ??
                 JsonHelpers.GetString(parameters, "pluginChatId") ?? string.Empty);
             w.WriteString("filePath", R(call, "filePath"));
-            WOpt(w, call, "fileType", "fileType");
+            if (kind == "audio") WOptI(w, call, "durationMs", "durationMs");
         });
     }
 
@@ -130,17 +170,75 @@ public static class AgentRuntimeChannelPluginExecutor
         WReq(w, call, "app_token", "app_token");
         WReq(w, call, "table_id", "table_id");
         w.WritePropertyName(arrayName == "record_ids" ? "recordIds" : "records");
-        if (call.Input.TryGetProperty(arrayName, out var arr)) arr.WriteTo(w); else w.WriteStartArray(); w.WriteEndArray();
+        // 原写法 `if (x) A; else B; C;` 里 C 是条件外无条件执行的，命中时会在对象里补一个 WriteEndArray 直接抛异常。
+        if (TryGetProp(call.Input, arrayName, out var array) && array.ValueKind == JsonValueKind.Array)
+        {
+            array.WriteTo(w);
+            return;
+        }
+        w.WriteStartArray();
+        w.WriteEndArray();
     }
 
-    private static string R(AgentRuntimeNativeToolCall call, string name)
+    /// <summary>
+    /// 读入参：先按传入名精确命中，未命中再按驼峰 / 蛇形互换命中。
+    /// </summary>
+    /// <remarks>
+    /// 工具 schema（<c>ChannelPluginToolProvider</c>）用驼峰（<c>filePath</c>），而路由代码历史上一律按蛇形读
+    /// （<c>file_path</c>）。<c>JsonHelpers</c> 全是 <c>TryGetProperty</c> 精确匹配，早先只给必填字符串打了个
+    /// 「名字含下划线才回落驼峰」的补丁（见旧 R），于是可选字段、数字、数组、布尔全都读不到 —— 模型照着
+    /// schema 传了也白传，报错还像是模型没传（S-353）。这里把回落做成唯一入口，下面那些 helper 一律走它，
+    /// 两套命名从此互通。
+    /// </remarks>
+    internal static bool TryGetProp(JsonElement input, string name, out JsonElement value)
     {
-        var value = JsonHelpers.GetString(call.Input, name)
-            ?? (name.Contains('_', StringComparison.Ordinal)
-                ? JsonHelpers.GetString(call.Input, ToCamelCase(name))
-                : null);
-        return value?.Trim() ?? string.Empty;
+        if (input.ValueKind == JsonValueKind.Object)
+        {
+            if (input.TryGetProperty(name, out value)) return true;
+            var alternate = name.Contains('_', StringComparison.Ordinal) ? ToCamelCase(name) : ToSnakeCase(name);
+            if (input.TryGetProperty(alternate, out value)) return true;
+
+            // 改过名的入参：旧名仍在旧 prompt / 旧插件里（S-356 D-4）。不认的话读到空串，
+            // 报的却是「新名没传」，把排错方向直接带偏 —— 与 S-353 同一个病的另一面。
+            if (TryGetLegacy(input, name, out value)) return true;
+            if (TryGetLegacy(input, alternate, out value)) return true;
+        }
+        value = default;
+        return false;
     }
+
+    /// <summary>
+    /// 按**规范名**查它改名前叫什么，命中的旧名照样读。
+    ///
+    /// 方向是从新到旧：路由代码一律按新名读（<c>filePath</c>），要救的是输入里写成旧名
+    /// （<c>imagePath</c>）的调用。只登记**实际改过名**的那几个，不做通用猜测。
+    /// </summary>
+    private static bool TryGetLegacy(JsonElement input, string name, out JsonElement value)
+    {
+        if (LegacyParamAliases.TryGetValue(name, out var formerNames))
+        {
+            foreach (var formerName in formerNames)
+            {
+                if (input.TryGetProperty(formerName, out value)) return true;
+            }
+        }
+        value = default;
+        return false;
+    }
+
+    private static readonly Dictionary<string, string[]> LegacyParamAliases = new(StringComparer.Ordinal)
+    {
+        ["filePath"] = ["imagePath", "image_path"],
+    };
+
+    private static string R(AgentRuntimeNativeToolCall call, string name) =>
+        (TryGetProp(call.Input, name, out var raw) ? JsonHelpers.AsString(raw) : null)?.Trim() ?? string.Empty;
+
+    private static string[] RArray(AgentRuntimeNativeToolCall call, string name) =>
+        TryGetProp(call.Input, name, out var raw) ? JsonHelpers.AsStringArray(raw) : Array.Empty<string>();
+
+    private static bool RBool(AgentRuntimeNativeToolCall call, string name, bool fallback) =>
+        TryGetProp(call.Input, name, out var raw) ? JsonHelpers.AsBool(raw, fallback) : fallback;
 
     private static string ToCamelCase(string name)
     {
@@ -159,18 +257,38 @@ public static class AgentRuntimeChannelPluginExecutor
         return result.ToString();
     }
 
+    private static string ToSnakeCase(string name)
+    {
+        var result = new StringBuilder(name.Length + 4);
+        for (var i = 0; i < name.Length; i++)
+        {
+            var ch = name[i];
+            if (!char.IsUpper(ch))
+            {
+                result.Append(ch);
+                continue;
+            }
+            if (i > 0) result.Append('_');
+            result.Append(char.ToLowerInvariant(ch));
+        }
+        return result.ToString();
+    }
+
     private static void WReq(Utf8JsonWriter w, AgentRuntimeNativeToolCall call, string outName, string inName) =>
         w.WriteString(outName, R(call, inName));
 
     private static void WOpt(Utf8JsonWriter w, AgentRuntimeNativeToolCall call, string outName, string inName)
     {
-        var v = JsonHelpers.GetString(call.Input, inName);
-        if (!string.IsNullOrWhiteSpace(v)) w.WriteString(outName, v);
+        var value = TryGetProp(call.Input, inName, out var raw) ? JsonHelpers.AsString(raw) : null;
+        if (!string.IsNullOrWhiteSpace(value)) w.WriteString(outName, value);
     }
 
     private static void WOptI(Utf8JsonWriter w, AgentRuntimeNativeToolCall call, string outName, string inName)
     {
-        if (JsonHelpers.GetIntNullable(call.Input, inName) is { } v) w.WriteNumber(outName, v);
+        if (TryGetProp(call.Input, inName, out var raw) && JsonHelpers.AsIntNullable(raw) is { } v)
+        {
+            w.WriteNumber(outName, v);
+        }
     }
 
     private static string ReadPluginId(JsonElement input, JsonElement parameters) =>

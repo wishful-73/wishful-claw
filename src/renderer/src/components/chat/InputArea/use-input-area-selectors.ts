@@ -6,6 +6,7 @@ import type { AIModelConfig } from '@renderer/lib/api/types'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { useChannelStore } from '@renderer/stores/channel-store'
 import { useProviderStore, modelSupportsVision } from '@renderer/stores/provider-store'
+import { isProviderUsable } from '@renderer/stores/provider-materialization'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { useGoalStore } from '@renderer/stores/goal-store'
@@ -217,11 +218,10 @@ export function useInputAreaSelectors(input: InputAreaSelectorsInput): InputArea
   // ── Auth ────────────────────────────────────────────────────────
   const hasApiKey = useProviderStore((s) =>
     // The banner means "no usable configured provider exists at all" — not
-    // "the currently selected provider lacks a key". Scan every enabled
-    // provider so disabled credentials do not suppress the warning.
-    s.providers.some((p: any) =>
-      p.enabled && (p.requiresApiKey === false || !!p.apiKey)
-    )
+    // "the currently selected provider lacks a key". Scan every provider so
+    // disabled credentials do not suppress the warning. S-359: the predicate
+    // itself now lives in `isProviderUsable`, shared with active selection.
+    s.providers.some((p) => isProviderUsable(p))
   )
 
   return {

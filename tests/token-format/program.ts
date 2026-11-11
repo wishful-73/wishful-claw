@@ -43,7 +43,7 @@ function testConversionTable(): void {
   eq(formatTokens(12500), '12.5k', '12500 → "12.5k"（< 100 一位）')
   eq(formatTokens(123456), '123k', '123456 → "123k"（≥ 100 整数）')
   eq(formatTokens(999999), '1.00M', '999999 → "1.00M"（进位升档）')
-  eq(formatTokens(1127850000), '1.13G', '1127850000 → "1.13G"（G 段 < 10 两位）')
+  eq(formatTokens(1127850000), '1.13B', '1127850000 → "1.13B"（B 段 < 10 两位）')
   eq(formatTokens(1e12), '1.00T', '1e12 → "1.00T"')
 }
 
@@ -52,8 +52,8 @@ function testConversionTable(): void {
 function testCarryBoundaries(): void {
   eq(formatTokens(999), '999', '999 仍在原值段')
   // 三层阶梯各来一发「四舍五入后跨过 1000」。
-  eq(formatTokens(999_999_999), '1.00G', 'G 段进位，而不是 "1000M"')
-  eq(formatTokens(999_999_999_999), '1.00T', 'T 段进位，而不是 "1000G"')
+  eq(formatTokens(999_999_999), '1.00B', 'B 段进位，而不是 "1000M"')
+  eq(formatTokens(999_999_999_999), '1.00T', 'T 段进位，而不是 "1000B"')
   // 精度档位按「已四舍五入的值」判定：9.999 读数上是 10，就不该再给两位小数。
   eq(formatTokens(9_999), '10.0k', '9.999k 读作 10.0k 而不是 10.00k')
   eq(formatTokens(99_999), '100k', '99.999k 读作 100k 而不是 100.0k')
@@ -68,8 +68,10 @@ function testCarryBoundaries(): void {
 function testSuffixCase(): void {
   eq(formatTokens(2_500).endsWith('k'), true, 'k 必须小写（与用户可见面最多的实现一致）')
   eq(formatTokens(2_500_000).endsWith('M'), true, 'M 大写')
-  eq(formatTokens(2_500_000_000).endsWith('G'), true, 'G 大写')
+  eq(formatTokens(2_500_000_000).endsWith('B'), true, 'B 大写（Billion，不是 SI 前缀 G）')
   eq(formatTokens(2_500_000_000_000).endsWith('T'), true, 'T 大写')
+  // S-358：十亿级按 AI 行业口径用 B，别再回退到 G（会被读成 GB 存储容量）。
+  eq(formatTokens(1_127_850_000).includes('G'), false, '十亿级不出现 G')
 }
 
 // ── 5. 全仓只剩一份实现 ──────────────────────────────────────────────────
@@ -114,7 +116,7 @@ const tests: Array<[string, () => void]> = [
   ['防御：0 / 负数 / NaN / Infinity', testGuardClauses],
   ['换算对照 9 行', testConversionTable],
   ['进位与精度边界', testCarryBoundaries],
-  ['后缀大小写 k / M / G / T', testSuffixCase],
+  ['后缀大小写 k / M / B / T', testSuffixCase],
   ['仓内只剩一份实现', testSingleImplementation]
 ]
 

@@ -10,6 +10,7 @@ import type {
   ChannelGroup,
   ChannelIncomingMessageData,
   ChannelInstance,
+  ChannelMediaPayload,
   ChannelMessage,
   MessagingChannelService
 } from '../../channel-types'
@@ -22,6 +23,7 @@ import {
   type WeixinImageItem,
   DEFAULT_WEIXIN_BASE_URL
 } from './weixin-api'
+import { WEIXIN_SUPPORTED_MEDIA_KINDS, sendWeixinMedia } from './weixin-outbound-media'
 
 const USER_MESSAGE_TYPE = 1
 const TEXT_ITEM = 1
@@ -75,6 +77,9 @@ function extractContent(items?: WeixinMessageItem[]): {
 
 export class WeixinService extends BasePluginService {
   readonly pluginType = 'weixin-official'
+
+  /** 出站媒体形态。`audio` 未验，见 `weixin-outbound-media.ts` 头部说明 */
+  readonly supportedMediaKinds = WEIXIN_SUPPORTED_MEDIA_KINDS
 
   private api!: WeixinApi
   private polling = false
@@ -156,28 +161,9 @@ export class WeixinService extends BasePluginService {
     })
   }
 
-  async sendImage(chatId: string, buffer: Buffer, text?: string): Promise<{ messageId: string }> {
-    return this.api.sendImage({
-      toUserId: chatId,
-      buffer,
-      text,
-      contextToken: this.getContextTokenForChat(chatId)
-    })
-  }
-
-  async sendFile(
-    chatId: string,
-    buffer: Buffer,
-    fileName: string,
-    text?: string
-  ): Promise<{ messageId: string }> {
-    return this.api.sendFile({
-      toUserId: chatId,
-      buffer,
-      fileName,
-      text,
-      contextToken: this.getContextTokenForChat(chatId)
-    })
+  /** 出站媒体。实现见 `weixin-outbound-media.ts` */
+  async sendMedia(chatId: string, media: ChannelMediaPayload): Promise<{ messageId: string }> {
+    return await sendWeixinMedia(this.api, chatId, this.getContextTokenForChat(chatId), media)
   }
 
   async replyMessage(messageId: string, content: string): Promise<{ messageId: string }> {

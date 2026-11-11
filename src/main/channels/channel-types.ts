@@ -128,6 +128,41 @@ export interface ChannelStreamingHandle {
   finish(finalContent: string): Promise<void>
 }
 
+/**
+ * 出站媒体的形态。
+ *
+ * 与入站的 `images` / `audio` 对称 —— 那边是「收到了什么」，这边是「要发什么」。
+ * 刻意只有三种：`image`（图片）、`file`（任意文件）、`audio`（语音消息）。
+ * 视频不单列 —— 走 `file`，能预览的渠道自己认 MIME。
+ */
+export type ChannelMediaKind = 'image' | 'file' | 'audio'
+
+/**
+ * 出站媒体的统一载荷。
+ *
+ * 只带「要发什么、从哪儿读」，不带平台细节（飞书的 `file_type`、微信的
+ * 缩略图之类）—— 那些由各渠道的 `sendMedia` 实现自己推。
+ */
+export interface ChannelMediaPayload {
+  kind: ChannelMediaKind
+  /** 本地绝对路径，或 http(s) URL */
+  source: string
+  /** 显式文件名。缺省从 `source` 推断 */
+  fileName?: string
+  /** MIME 类型。缺省由渠道实现从扩展名推断 */
+  mimeType?: string
+  /** 音频时长（毫秒）—— 部分平台限制时长，由渠道实现自行校验 */
+  durationMs?: number
+  /**
+   * 随媒体一起发出的附言（微信的 `text?` 参数就是这个）。
+   *
+   * **渠道支持就带上，不支持就忽略** —— 飞书 `sendImageMessage` / `sendFileMessage`
+   * 只认 `image_key` / `file_key`，要带文字得额外再发一条消息，行为不同，所以飞书忽略它。
+   * 需要「文字必定送达」的调用方请自己另发 `sendMessage`，不要依赖这个字段。
+   */
+  caption?: string
+}
+
 /** Runtime service interface — every messaging channel must implement this */
 export interface MessagingChannelService {
   readonly pluginId: string
@@ -153,6 +188,17 @@ export interface MessagingChannelService {
     initialContent: string,
     replyToMessageId?: string
   ): Promise<ChannelStreamingHandle>
+
+  // Outbound media (optional — declare supportedMediaKinds to opt in)
+  /**
+   * 本渠道能发出的媒体形态。缺省或空数组 = 只能发文本。
+   *
+   * 调用方不必先查这个字段 —— 走 `sendMediaOrText`（`channel-media.ts`）
+   * 会自动降级成文本。这个字段是给「想提前知道」的场景用的。
+   */
+  readonly supportedMediaKinds?: readonly ChannelMediaKind[]
+  /** 发送媒体。只在本渠道 `supportedMediaKinds` 含该形态时才会被调用 */
+  sendMedia?(chatId: string, media: ChannelMediaPayload): Promise<{ messageId: string }>
 }
 
 /** Factory function type — registered per provider */

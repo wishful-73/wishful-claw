@@ -27,7 +27,21 @@ public sealed class ChannelPluginToolProvider : IToolProvider
         registry.Register(new ToolDefinitionPlaceholder(
             "ChannelSendFile",
             "Send a file to the current channel conversation. The channel is inferred from the current session.",
-            ToolSchemaBuilder.Object(new() { ["filePath"] = ToolSchemaBuilder.String("Local path to the file."), ["fileType"] = ToolSchemaBuilder.String("Optional file type.") }, ["filePath"]),
+            ToolSchemaBuilder.Object(new() { ["filePath"] = ToolSchemaBuilder.String("Local path to the file.") }, ["filePath"]),
+            availableModes: ["normal", "goal", "global", "channel"],
+            visibleScopes: ToolVisibilityScopes.ChannelOnly));
+
+        registry.Register(new ToolDefinitionPlaceholder(
+            "ChannelSendAudio",
+            "Send a voice/audio message to the current channel conversation. The channel is inferred from the current session. " +
+            "If the channel does not support audio the text is sent instead.",
+            ToolSchemaBuilder.Object(
+                new()
+                {
+                    ["filePath"] = ToolSchemaBuilder.String("Local path to the audio file."),
+                    ["durationMs"] = ToolSchemaBuilder.Number("Optional audio duration in milliseconds.")
+                },
+                ["filePath"]),
             availableModes: ["normal", "goal", "global", "channel"],
             visibleScopes: ToolVisibilityScopes.ChannelOnly));
 
@@ -39,9 +53,9 @@ public sealed class ChannelPluginToolProvider : IToolProvider
                 new()
                 {
                     ["chatId"] = chatIdProp,
-                    ["imagePath"] = ToolSchemaBuilder.String("Local path to the image file.")
+                    ["filePath"] = ToolSchemaBuilder.String("Local path to the image file.")
                 },
-                ["chatId", "imagePath"]),
+                ["chatId", "filePath"]),
             availableModes: ["normal", "goal", "global", "channel"],
             visibleScopes: ToolVisibilityScopes.ChannelOnly));
 
@@ -59,25 +73,45 @@ public sealed class ChannelPluginToolProvider : IToolProvider
             visibleScopes: ToolVisibilityScopes.ChannelOnly));
 
         registry.Register(new ToolDefinitionPlaceholder(
-            "FeishuListChatMembers",
-            "List members in a Feishu chat.",
+            "FeishuSendAudio",
+            "Send a voice message to a Feishu chat. Feishu only accepts opus audio (about 60s max); " +
+            "other formats are rejected by the upload API rather than silently downgraded.",
             ToolSchemaBuilder.Object(
-                new() { ["chatId"] = chatIdProp },
+                new()
+                {
+                    ["chatId"] = chatIdProp,
+                    ["filePath"] = ToolSchemaBuilder.String("Local path to the opus audio file.")
+                },
+                ["chatId", "filePath"]),
+            availableModes: ["normal", "goal", "global", "channel"],
+            visibleScopes: ToolVisibilityScopes.ChannelOnly));
+
+        registry.Register(new ToolDefinitionPlaceholder(
+            "FeishuListChatMembers",
+            "List members in a Feishu chat. Page through with pageToken.",
+            ToolSchemaBuilder.Object(
+                new()
+                {
+                    ["chatId"] = chatIdProp,
+                    ["pageSize"] = ToolSchemaBuilder.Integer("Page size. Defaults to Feishu's own page size."),
+                    ["pageToken"] = ToolSchemaBuilder.String("Opaque cursor from a previous page.")
+                },
                 ["chatId"]),
             availableModes: ["normal", "goal", "global", "channel"],
             visibleScopes: ToolVisibilityScopes.ChannelOnly));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "FeishuAtMember",
-            "Mention a specific member in a Feishu message.",
+            "Mention one or more members in a Feishu message.",
             ToolSchemaBuilder.Object(
                 new()
                 {
                     ["chatId"] = chatIdProp,
-                    ["userId"] = ToolSchemaBuilder.String("User ID to mention."),
-                    ["content"] = ToolSchemaBuilder.String("Message content.")
+                    ["userIds"] = ToolSchemaBuilder.ArraySchema("User IDs to mention.", ToolSchemaBuilder.String("User ID.")),
+                    ["text"] = ToolSchemaBuilder.String("Message content."),
+                    ["atAll"] = ToolSchemaBuilder.Boolean("Mention everyone in the chat instead of the listed user IDs.")
                 },
-                ["chatId", "userId", "content"]),
+                ["chatId", "text"]),
             availableModes: ["normal", "goal", "global", "channel"],
             visibleScopes: ToolVisibilityScopes.ChannelOnly));
 
@@ -89,7 +123,9 @@ public sealed class ChannelPluginToolProvider : IToolProvider
                 {
                     ["messageId"] = ToolSchemaBuilder.String("Message ID to mark as urgent."),
                     ["userIds"] = ToolSchemaBuilder.ArraySchema("User IDs to notify.", ToolSchemaBuilder.String("User ID.")),
-                    ["urgentType"] = ToolSchemaBuilder.String("Urgent type.", ["app", "sms"])
+                    ["urgentTypes"] = ToolSchemaBuilder.ArraySchema(
+                        "Urgent notification kinds, any of app / sms. Defaults to app.",
+                        ToolSchemaBuilder.String("Urgent type.", ["app", "sms"]))
                 },
                 ["messageId"]),
             availableModes: ["normal", "goal", "global", "channel"],
@@ -106,9 +142,9 @@ public sealed class ChannelPluginToolProvider : IToolProvider
                 new()
                 {
                     ["chatId"] = chatIdProp,
-                    ["imagePath"] = ToolSchemaBuilder.String("Local path to the image file.")
+                    ["filePath"] = ToolSchemaBuilder.String("Local path to the image file.")
                 },
-                ["chatId", "imagePath"]),
+                ["chatId", "filePath"]),
             availableModes: ["normal", "goal", "global", "channel"],
             visibleScopes: ToolVisibilityScopes.ChannelOnly));
 
@@ -120,6 +156,22 @@ public sealed class ChannelPluginToolProvider : IToolProvider
                 {
                     ["chatId"] = chatIdProp,
                     ["filePath"] = ToolSchemaBuilder.String("Local path to the file.")
+                },
+                ["chatId", "filePath"]),
+            availableModes: ["normal", "goal", "global", "channel"],
+            visibleScopes: ToolVisibilityScopes.ChannelOnly));
+
+        registry.Register(new ToolDefinitionPlaceholder(
+            "WeixinSendAudio",
+            "Send a voice message to a WeChat chat. The encode_type is inferred from the file extension " +
+            "(silk / mp3 / amr / speex / ogg / opus / wav / pcm), unknown extensions fall back to silk.",
+            ToolSchemaBuilder.Object(
+                new()
+                {
+                    ["chatId"] = chatIdProp,
+                    ["filePath"] = ToolSchemaBuilder.String("Local path to the audio file."),
+                    ["content"] = ToolSchemaBuilder.String("Optional caption sent together with the voice message."),
+                    ["durationMs"] = ToolSchemaBuilder.Number("Optional audio duration in milliseconds.")
                 },
                 ["chatId", "filePath"]),
             availableModes: ["normal", "goal", "global", "channel"],

@@ -5,11 +5,8 @@
  */
 
 import type { WeixinService } from '../../channels/providers/weixin/weixin-service'
-import {
-  activeChannelManager,
-  registerChannelMessagePackHandler,
-  readBinarySource
-} from './channel-handler-utils'
+import { buildMediaFallbackText, sendMediaOrText } from '../../channels/channel-media'
+import { activeChannelManager, registerChannelMessagePackHandler } from './channel-handler-utils'
 
 export function registerWeixinHandlers(): void {
   registerChannelMessagePackHandler<{
@@ -24,9 +21,13 @@ export function registerWeixinHandlers(): void {
     if (!service) return { error: 'Weixin plugin not running or not found' }
 
     try {
-      const { buffer } = await readBinarySource(args.filePath, 'image.png')
-      const result = await service.sendImage(args.chatId, buffer, args.content)
-      return { ok: true, messageId: result.messageId }
+      const result = await sendMediaOrText(
+        service,
+        args.chatId,
+        { kind: 'image', source: args.filePath, caption: args.content },
+        buildMediaFallbackText('image', args.content)
+      )
+      return { ok: true, messageId: result.messageId, sentAs: result.sentAs }
     } catch (err) {
       return { error: err instanceof Error ? err.message : String(err) }
     }
@@ -44,9 +45,43 @@ export function registerWeixinHandlers(): void {
     if (!service) return { error: 'Weixin plugin not running or not found' }
 
     try {
-      const { buffer, fileName } = await readBinarySource(args.filePath, 'file')
-      const result = await service.sendFile(args.chatId, buffer, fileName, args.content)
-      return { ok: true, messageId: result.messageId }
+      const result = await sendMediaOrText(
+        service,
+        args.chatId,
+        { kind: 'file', source: args.filePath, caption: args.content },
+        buildMediaFallbackText('file', args.content)
+      )
+      return { ok: true, messageId: result.messageId, sentAs: result.sentAs }
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
+  registerChannelMessagePackHandler<{
+    pluginId: string
+    chatId: string
+    filePath: string
+    content?: string
+    durationMs?: number
+  }>('plugin:weixin:send-audio', async (args) => {
+    const service = activeChannelManager?.getService(args.pluginId) as
+      | WeixinService
+      | undefined
+    if (!service) return { error: 'Weixin plugin not running or not found' }
+
+    try {
+      const result = await sendMediaOrText(
+        service,
+        args.chatId,
+        {
+          kind: 'audio',
+          source: args.filePath,
+          caption: args.content,
+          durationMs: args.durationMs
+        },
+        buildMediaFallbackText('audio', args.content)
+      )
+      return { ok: true, messageId: result.messageId, sentAs: result.sentAs }
     } catch (err) {
       return { error: err instanceof Error ? err.message : String(err) }
     }
@@ -68,13 +103,20 @@ export async function executeWeixinChannelTool(
     case 'plugin:weixin:send-image': {
       if (!service) return { error: 'Weixin plugin not running or not found' }
       try {
-        const { buffer } = await readBinarySource(String(args.filePath ?? ''), 'image.png')
-        const result = await service.sendImage(
+        const result = await sendMediaOrText(
+          service,
           String(args.chatId ?? ''),
-          buffer,
-          typeof args.content === 'string' ? args.content : undefined
+          {
+            kind: 'image',
+            source: String(args.filePath ?? ''),
+            caption: typeof args.content === 'string' ? args.content : undefined
+          },
+          buildMediaFallbackText(
+            'image',
+            typeof args.content === 'string' ? args.content : undefined
+          )
         )
-        return { ok: true, messageId: result.messageId }
+        return { ok: true, messageId: result.messageId, sentAs: result.sentAs }
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) }
       }
@@ -82,14 +124,42 @@ export async function executeWeixinChannelTool(
     case 'plugin:weixin:send-file': {
       if (!service) return { error: 'Weixin plugin not running or not found' }
       try {
-        const { buffer, fileName } = await readBinarySource(String(args.filePath ?? ''), 'file')
-        const result = await service.sendFile(
+        const result = await sendMediaOrText(
+          service,
           String(args.chatId ?? ''),
-          buffer,
-          fileName,
-          typeof args.content === 'string' ? args.content : undefined
+          {
+            kind: 'file',
+            source: String(args.filePath ?? ''),
+            caption: typeof args.content === 'string' ? args.content : undefined
+          },
+          buildMediaFallbackText(
+            'file',
+            typeof args.content === 'string' ? args.content : undefined
+          )
         )
-        return { ok: true, messageId: result.messageId }
+        return { ok: true, messageId: result.messageId, sentAs: result.sentAs }
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) }
+      }
+    }
+    case 'plugin:weixin:send-audio': {
+      if (!service) return { error: 'Weixin plugin not running or not found' }
+      try {
+        const result = await sendMediaOrText(
+          service,
+          String(args.chatId ?? ''),
+          {
+            kind: 'audio',
+            source: String(args.filePath ?? ''),
+            caption: typeof args.content === 'string' ? args.content : undefined,
+            durationMs: typeof args.durationMs === 'number' ? args.durationMs : undefined
+          },
+          buildMediaFallbackText(
+            'audio',
+            typeof args.content === 'string' ? args.content : undefined
+          )
+        )
+        return { ok: true, messageId: result.messageId, sentAs: result.sentAs }
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) }
       }

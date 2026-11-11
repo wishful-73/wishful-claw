@@ -12,12 +12,16 @@ import type { TokenUsage, AIModelConfig, ProviderType } from './api/types'
 
 /**
  * Token count unit ladder. `k` stays lowercase (SI prefix, and it is what the
- * largest share of the UI already showed); `M` / `G` / `T` are uppercase.
+ * largest share of the UI already showed); `M` / `B` / `T` are uppercase.
+ *
+ * `B` = Billion, not `G` = Giga: 1e9 uses the AI-industry convention (model
+ * params and token usage are quoted in M / B / T), because `G` reads as GB of
+ * storage in a Chinese UI. Same divisor, display letter only (S-358).
  */
 const TOKEN_UNITS: ReadonlyArray<{ divisor: number; suffix: string }> = [
   { divisor: 1_000, suffix: 'k' },
   { divisor: 1_000_000, suffix: 'M' },
-  { divisor: 1_000_000_000, suffix: 'G' },
+  { divisor: 1_000_000_000, suffix: 'B' },
   { divisor: 1_000_000_000_000, suffix: 'T' }
 ]
 
@@ -39,12 +43,12 @@ function formatScaledUnit(scaled: number): string {
  * composer counter and every usage panel go through it, so one number never
  * renders as two different strings.
  *
- * Rules: ladder `k` / `M` / `G` / `T`; `< 1000` prints the plain integer; inside
+ * Rules: ladder `k` / `M` / `B` / `T`; `< 1000` prints the plain integer; inside
  * a unit `< 10` two decimals, `< 100` one, `>= 100` none; and if rounding crosses
  * 1000 the whole thing is recomputed one unit up (`999999` → `1.00M`, not `1000k`).
  *
  * Examples: 0 → "0", 850 → "850", 1000 → "1.00k", 1234 → "1.23k", 12500 → "12.5k",
- * 123456 → "123k", 999999 → "1.00M", 1127850000 → "1.13G", 1e12 → "1.00T"
+ * 123456 → "123k", 999999 → "1.00M", 1127850000 → "1.13B", 1e12 → "1.00T"
  */
 export function formatTokens(n: number): string {
   if (!Number.isFinite(n) || n <= 0) return '0'

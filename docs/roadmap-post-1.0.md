@@ -8,6 +8,8 @@
 > 落盘：2026-10-14（2026-10-15 追加 WorkBuddy + 5 个社区参考实现 + 定位口径 + Astra Gate + waygate-qoder + H-1）。**未勘察到底、未定案、未开工。**
 > **2026-10-22 追加（R-3 转正）**：10-22 08:49 老大定「第一版本先处理反代，这是一种节约手段」，08:50 定**形态 A**（provider 层内实现，不起本地服务），09:12 定风险口径「这个可以提醒风险呀」，**09:14 定「v1.0.1 带 WorkBuddy」**；同日勘察完成 —— **WorkBuddy 拆入 `v3-iter-1`，登记为 `S-218`**，并补入唯一一份上游源码参考 **`astragate-community/astra-gate-plugins`**（见下方同名小节）。**R-1 / R-2 / H-1 仍未勘察到底、未开工；R-3 的 Qoder 部分仍登记。**
 > **2026-10-27 追加（R-4 新增 / R-1 口径升级）**：13:49 老大定「能听**不属于我们这个项目**，走通用插件的形式，加载进来使用」；13:57 划分两类插件（Type A 给 agent、**Type B 带 UI 且 UI 由插件自带**）；14:00 定「**先只做 window**」「插件**不做白名单，能开放的越多越好**」「安装是用户自己点的，**要确认**」⇒ 新增 **`R-4` 插件体系**，**`R-1` 听改为 Type B 插件实现**（不在主程序内置）。见下方「R-4」与修订后的 R-1 小节。
+> **2026-11-09 追加（R-3 关闭 / R-1·R-4 交账 / 归属原则钉死）**：10:36 老大定「**R-3直接标关闭**」。同日核对：**R-4 基座 8 条已全部落地**（S-240~S-244，v3-iter-4 五刀），**R-1 本仓应交付的部分（录音采集）已完成**，转写插件本体属另一个项目。最重要的是老大钉死了归属原则 ——「**本仓主要是负责做插件底座。不负责具体功能实现**」：具体功能（转写 / 合成 / 说话人分离 / 会议 UI）一律不进本仓，本仓只做 **manifest 加载、导轨入口、独立窗口、资产下载器、生命周期、卸载清理、安装确认、以及通道能力（录音采集 / 出站媒体）**。
+> **2026-11-11 追加（R-5 交账）**：R-5 出站媒体通道随 v3-iter-9（目标 1.0.9）**实施完毕** —— 统一 `sendMedia` + `supportedMediaKinds`，飞书 / 微信已接入图片 / 文件 / 语音，其余六家无凭证留空、由降级链路退避发文字。**⇒ R-1 入站 / R-2 出站两颗在本仓的通道都已补齐，R 系只剩插件本体在别的项目（`D:\claw\QwenAsr` 未建、`D:\claw\kittentts-rs` 已有引擎）。** R-2 现在**只剩「合成」属插件**；R-4 未决项（`views[].mode` 只有 `'window'`、`AppPluginId` 硬编码）不变。
 
 ---
 
@@ -15,11 +17,12 @@
 
 | 编号 | 方向 | 一句话 | 现成基础 | 状态 |
 |---|---|---|---|---|
-| **R-1** | **听** | 语音转文字：电脑做会议记录 / 纪要 | 老大仓库 **`wishful-73/QwenASR`**（Windows exe ~2.3 MB；模型 0.6B ≈ 490 MB）+ **说话人区分 `sherpa-onnx`**（本地源码 `D:\claw\sherpa-onnx`） | **登记 · 口径升级为「插件化」**（2026-10-27 定，依赖 `R-4`；不进主程序） |
-| **R-2** | **说** | 渠道发消息时，用户不方便看文字就直接听语音 | **MOSS-TTS-Nano**（0.1B / 有 ONNX CPU 版）；本机朗读 **S-138 已实施** ⇒ 本方向是**升级替换**，不是从零做 | 登记 |
-| **R-3** | **反代** | 客户端不好用但模型可用 ⇒ 自建反代转成 OpenAI 兼容 | **Qoder 主参考 `zhanghaojie513/waygate-qoder`**（TS / MIT，凭证解密 + COSY 协议全实现）；**架构参考 `239573049/Astra-Gate`**（**C# / MIT**，四协议 + 统一 IR 的本地网关）；**WorkBuddy 上游主参考 `astragate-community/astra-gate-plugins`**（JS / **Apache-2.0**，`packages/workbuddy` 是唯一一份「把 WorkBuddy 当上游」的公开源码）；源流备查 `EchoPing07/Qoder-2API-Go` | **部分转正**：**WorkBuddy → v3-iter-1 · S-218**（2026-10-22，形态定 A）；Qoder 仍登记 |
+| **R-1** | **听** | 语音转文字：电脑做会议记录 / 纪要 | 老大仓库 **`wishful-73/QwenASR`**（Windows exe ~2.3 MB；模型 0.6B ≈ 490 MB）+ **说话人区分 `sherpa-onnx`**（本地源码 `D:\claw\sherpa-onnx`） | **本仓部分已完成**：录音采集三件套（`plugin-audio.ts` / `plugin-audio-wav.ts` / `plugin-audio-handlers.ts`）随 R-4 交付；转写插件本体属**另一个项目**（该仓尚未建） |
+| **R-2** | **说** | 渠道发消息时，用户不方便看文字就直接听语音 | **`kittentts-rs`**（`D:\claw\kittentts-rs`：KittenTTS 的 Rust 移植，v0.4.1 / Apache-2.0 / CPU-only ONNX / 纯 Rust / `src/bin/server.rs` 带 OpenAI 兼容 TTS server）；本机朗读 **S-138 已实施** | 只剩「合成」属插件、不在本仓；**通道那一格已由 R-5 补完（2026-11-11）** |
+| **R-3** | **反代** | 客户端不好用但模型可用 ⇒ 自建反代转成 OpenAI 兼容 | ~~Qoder 主参考~~ / ~~Astra-Gate~~ / ~~astra-gate-plugins~~（勘察结论全部保留备查） | **❌ 已关闭（2026-11-09 10:36）** —— WorkBuddy 被 S-318 摘掉、Qoder 由 S-230 关闭；契约缺是「做不了」，合规裁定是「不该做」 |
 | **H-1** | **方法论**（非功能） | Harness 工程：**agent 的工作系统**该怎么设计才可靠 | `walkinglabs/learn-harness-engineering`（**⭐19.9k / 2.2k fork**，MIT，14 讲 + 项目 + 8 个开箱模板 + 前沿 harness 拆解） | 登记 |
-| **R-4** | **插件体系** | 两类插件：**Type A 给 agent 用（tools / MCP）**、**Type B 给用户用（自带 UI · 独立窗口）**；资产（exe / 模型）按需下载 | 已有「自定义扩展」骨架（`src/shared/extension-types.ts`）+ MCP 子进程通道（`src/main/mcp/mcp-client.ts`） | **形态已定**（2026-10-27），未开工 |
+| **R-4** | **插件体系** | 两类插件：**Type A 给 agent 用（tools / MCP）**、**Type B 给用户用（自带 UI · 独立窗口）**；资产（exe / 模型）按需下载 | 已有「自定义扩展」骨架（`src/shared/extension-types.ts`）+ MCP 子进程通道（`src/main/mcp/mcp-client.ts`） | **基座 8 条已全部交付**（S-240~S-244，v3-iter-4 五刀）；`views[].mode:'panel'` 与内置插件 manifest 化仍属未决 |
+| **R-5** | **出站媒体通道** | 渠道把图片 / 文件 / **语音**发出去 —— 与 R-1 的录音采集对称（一个入站收音频、一个出站发音频） | 飞书已有 `sendImageMessage` / `sendFileMessage`；微信有通用 `sendItems`（iLink `item_list`）；**钉钉 / Discord / QQ / Telegram / 企业微信只有纯文本 `sendMessage(chatId, content)`** | **✅ 已实施（v3-iter-9 · S-352）** —— 统一接口 `sendMedia` + `supportedMediaKinds`，飞书 / 微信已接入并发语音；其余六家无凭证，留空即退避发文字 |
 
 ---
 
@@ -70,10 +73,12 @@
 
 **目标场景**：渠道把消息发给用户时，用户不方便看文字 ⇒ **直接听语音**。
 
+> ⚠️ **2026-11-09 拆分订正**：按老大 10:33「本仓主要是负责做插件底座，不负责具体功能实现」⇒ **本条只剩「合成」这一件事，属插件项目**。「把音频发到渠道」那一格已拆出，独立成 [**R-5 · 出站媒体通道**](#r-5--出站媒体通道渠道发图片--文件--语音2026-11-09-追加)（[S-352](plans/iter-v3-9/requirements/S-352.md)）。**下面第 3 项待勘察已随 R-5 移走**，本条不再重复验渠道能力。
+
 **现状（关键 —— 本方向不是从零做）**
 
 - **S-138 已在 iter-v2-34 实施**（`4eb5fc05`）：本机朗读音色 —— `window.speechSynthesis.getVoices()` 过滤 `localService`、设置页音色选择器 + `rate` / `pitch`；实测本机 OneCore **3 个中文语音**（Huihui / Kangkang / Yaoyao，本地离线）。
-- ⇒ 本方向要做的是两件事：① **换合成引擎**（本机 OneCore ⇒ MOSS-TTS-Nano 这类真模型）；② **扩场景**（面板朗读 ⇒ 渠道语音播报）。
+- ⇒ 本方向要做的是两件事：① **换合成引擎**（本机 OneCore ⇒ MOSS-TTS-Nano 这类真模型）；② **把合成能力做成插件**（原「扩场景到渠道」已归 R-5）。
 
 **候选技术：MOSS-TTS-Nano**（以下为 2026-10-14 实测抓取：GitHub API + README，非二手转述）
 
@@ -95,13 +100,31 @@
 
 1. **权重体积** —— 本机拉 HuggingFace API 未取到（**没测出来就不猜**）。打包口径**已定案：不随包、走首次下载**（见「共同口径」）⇒ 体积只影响**下载时长与提示文案**，不再是选型门槛。
 2. 推理落点：**ONNX Runtime C#**（`Microsoft.ML.OnnxRuntime`，对齐我们的 .NET sidecar）还是打包 Python / CLI 子进程。
-3. **渠道侧能不能出语音**：微信等渠道是否支持发语音消息、时长与格式限制。
+3. ~~**渠道侧能不能出语音**~~ —— **已移出本条**：属通道能力，见 [R-5](#r-5--出站媒体通道渠道发图片--文件--语音2026-11-09-追加) / [S-352](plans/iter-v3-9/requirements/S-352.md)。本条只关心「合出来的音频文件对不对」。
 4. 用不用**声音克隆**（个人音色 / 会议发言人音色）。
 5. 与 **S-138** 的取舍：本机 OneCore 是否保留作**降级路径**（模型不可用时兜底）。
 
 ---
 
 ## R-3 · 反代：客户端不好用但模型可用
+
+> **状态：❌ 已关闭（2026-11-09 10:36 老大「R-3直接标关闭」）。本方向不再推进，两个子项全部归零。**
+>
+> | 子项 | 结局 |
+> |---|---|
+> | **WorkBuddy** | S-218 曾随 v1.0.1 交付，后被 **v3-iter-8 的 S-318** 从公开面整体摘掉（5 个 preset 删除 + 「授权 AI 服务商」整页删除 + `lib/auth/` 整目录清 + `afterPack` 冒充证据硬拦截） |
+> | **Qoder CN** | **S-230 于 2026-11-09 10:14 关闭**，理由是「合规裁定 ≠ 缺契约」 |
+>
+> **关闭理由两层，第二层决定性：**
+>
+> 1. **契约层面** —— Qoder 的接口契约从来没有过（全树搜 `qoder` 零命中，`D:\claw` 下也无参考实现副本）。这是「做不了」。
+> 2. **合规层面** —— 反代 = 非官方接入 + 用用户自己的订阅额度 + OAuth 冒充官方客户端，与 S-318 的裁定直接冲突。这是「**不该做**」。后者不随契约到手而变化。
+>
+> 注：`afterPack` 那道闸扫的是 S-318 那 14 个关键字，**Qoder / WorkBuddy 之外的同类不在里面** —— 挡不住新面孔，只能靠这条裁定 + 人工把关。
+>
+> **保留：本段以下全部技术勘察原样保留**（Astra Gate / astra-gate-plugins / waygate-qoder 三个源码级参考源 + 五个社区实现清单）。将来私有仓 `D:\claw\wishful-work` 若要做反代自用，直接从这些开始，不必重查一遍。**关闭不等于删除。**
+>
+> **重开条件**：仅限私有仓自用场景；公开仓 `wishful-claw` 不再接任何反代类服务商。
 
 **老大口径（原话）**
 
@@ -482,6 +505,82 @@ Local State 的 os_crypt.encrypted_key（base64，去前 5 字节 "DPAPI"）
 2. 插件市场 / 签名 / 版本升级策略 —— **未定，本阶段不做**；先支持「从文件夹安装」。
 3. `schemaVersion` 是否升到 2（新增 `views` / `assets`）—— 需与 `ExtensionManifest` 现有 v1 兼容性一起定。
 4. 内合内置插件（image / browser / desktop-control / codegraph）是否改造成 manifest 驱动 —— 未定，不阻塞。
+
+---
+
+## R-5 · 出站媒体通道（渠道发图片 / 文件 / 语音，2026-11-09 追加）
+
+> **登记来源**：老大 2026-11-09 10:33「**本仓主要是负责做插件底座。不负责具体功能实现**」→ 10:36「其他缺口，进行新迭代下的需求登记」。
+> **需求单**：[`plans/iter-v3-9/requirements/S-352.md`](plans/iter-v3-9/requirements/S-352.md)
+> **状态**：**✅ 已实施（2026-11-11，v3-iter-9）** —— 刀 0 八家实读 → 刀 1/2/3 接口与飞书 / 微信 / 语音 → 刀 9 降级真接线（`3922a827`）。读源加固（30 MB 上界 / 60 s 超时 / 凭据路径黑名单）见 S-355。**待真机验收**。下面「七家现状」「开工前置」两节保留为**设计当时的快照**，实际落地结论见 §落地结果。
+
+### 为什么单独立这一条
+
+R-2「说」原本写成「渠道发消息时，用户不方便看文字就直接听语音」。按 10:33 的归属原则重新切：
+
+| 层 | 谁做 | 内容 |
+|---|---|---|
+| **插件**（另一个项目） | ❌ 不在本仓 | 接 `kittentts-rs` 合成音频 |
+| **本仓** | ✅ 这一条 | 把音频（以及图片、文件）**发到渠道**，发不了能退回文字 |
+
+⇒ **合成属插件，通道属底座。** 把出站通道从 R-2 里拆出来单列，是为了让 R-2 只剩「插件本体」那一件事，跟 R-1 现在的状态对齐（R-1 本仓部分已交付，转写插件在 `D:\claw\QwenAsr`、尚未建仓）。
+
+### 根因（实读，非推测）
+
+统一接口 `MessagingChannelService`（`channel-types.ts:132-156`）出站侧**只有文本**：
+
+```ts
+sendMessage(chatId: string, content: string): Promise<{ messageId: string }>
+replyMessage(messageId: string, content: string): Promise<{ messageId: string }>
+```
+
+而入站 `ChannelIncomingMessageData`（同文件 `:97-127`）有 `images` / `audio` / `mediaRefs` / `msgType` **四个媒体字段**。
+
+⇒ **同一个渠道，收的方向有媒体概念，发的方向没有。** 不是某家漏了实现，是**接口层缺这一格能力**。
+
+### 七家现状（2026-11-09 逐家实读）
+
+| 渠道 | 出站媒体 | 证据 |
+|---|---|---|
+| 飞书 | ⚠️ 有，但**绕过统一接口** | `feishu-media-api.ts:199 sendImageMessage` / `:220 sendFileMessage`；调用方走 `channel-feishu-handlers.ts:39/79/352/363` 的 `service.api.media.*` 私有路径 |
+| 微信 | ⚠️ 协议层可能有，未验证 | `weixin-api.ts:209 sendItems(items: Array<Record<string, unknown>>)`，iLink `item_list`；开放式结构能塞任意 item，但**没有任何代码构造过语音 item** |
+
+> ⚠️ **上面这行是 11-09 的登记快照，已被实施推翻**：微信 `sendImage` / `sendFile` **本来就有**（`weixin-service.ts:159/168`，登记时判「未验证」是错的），语音 `voice_item` 于刀 3 按官方 iLink SDK 重写（`media_type` 2→**4**、删 `voice_len`、加 `encode_type` / `sample_rate` / `bits_per_sample` / `playtime`）。实际结论见下方 §落地结果。
+| 钉钉 | ❌ 纯文本 | `dingtalk-service.ts:273` |
+| Discord | ❌ 纯文本 | `discord-service.ts:36` |
+| QQ | ❌ 纯文本 | `qq-service.ts:100` |
+| Telegram | ❌ 纯文本 | `telegram-service.ts:31` |
+| 企业微信 | ❌ 纯文本 | `wecom-service.ts:31` |
+
+**飞书那两个方法之所以是私有实现，正是因为接口上没有位置放它们。** 一家有、六家没有，且有的那家长在渠道私有分支里 ——「底座该收口而没收口」的典型。
+
+### 与 R-1 的对称关系
+
+| 方向 | 能力 | 状态 |
+|---|---|---|
+| 入站 | 收音频（录音采集三件套：loopback 系统内录 + 16k 单声道 wav 分段落盘） | ✅ 已交付（S-243 `0869d144`） |
+| **出站** | **发音频 / 图片 / 文件到渠道** | **✅ 已交付（S-352，`14837e16` / `405bc9df` / `fd97143e` / `3922a827`）** —— 待真机验收 |
+
+### 落地结果（2026-11-11）
+
+| 项 | 结论 |
+|---|---|
+| 接口形态 | `sendMedia(chatId, { kind: 'image' \| 'file' \| 'audio', path, mimeType?, durationMs? })` + `supportedMediaKinds: readonly MediaKind[]` 只读声明（`channel-types.ts`） |
+| 降级 | `sendMedia` 前查 `supportedMediaKinds`，不含目标 kind 直接走 `sendMessage(text)` —— **不抛错、不静默丢弃、不弹窗**。飞书 6 处 + 微信 6 处调用点已改走 `sendMediaOrText(...)`，测试覆盖两条分支 |
+| 已接入 | **飞书**（图片 / 文件 / 语音）、**微信**（图片 / 文件 / 语音 `voice_item`） |
+| 未接入 | 钉钉 / Discord / QQ / Telegram / 企业微信 —— **无凭证，`supportedMediaKinds` 留空即正确结论**，降级链路兜底 |
+| 读源护栏 | 30 MB 硬上界（本地 stat 先判 + 读完再判；URL 先判 `content-length` 再流式累加）+ 60 s `AbortSignal.timeout` + 全异步（S-355 D-6） |
+| 路径边界 | 凭据类黑名单（`.ssh` / `.aws` / `.env*` / 私钥 / `.pem` 等），**不做目录白名单**（S-355 D-7，A+C 裁定）；其余任意文件仍可被发出，属**已登记的已知风险**（S-352 §9） |
+
+### 开工前置（写死）
+
+**七家的媒体发送能力逐家实机验证，没验完不写接口。** 猜着设计出来的抽象会被某一家的限制推翻。尤其要确认「钉钉 / 企业微信机器人到底能不能发语音」—— 如果确认不能，`supportedMediaKinds` 为空**是正确结论，不是失败**，能力声明本来就要能表达「不支持」。
+
+> ✅ **这条前置已执行（2026-11-09 刀 0）**：八家逐家实读（比原计划多出 WhatsApp）。**有凭证的只有飞书 + 微信**，其余六家按无凭证处理 ⇒ `supportedMediaKinds` 留空，降级发文字。钉钉 / 企业微信能不能发语音**未能验证**（无凭证），故按「不支持」落地 —— 这与前置里「确认不能则留空」同一条结论，只是**理由是「未验证」而非「确认不能」**，已在 S-352 §5.1 记明。
+
+### 刻意不划进本条的
+
+媒体格式转码、语音时长控制与切分、媒体消息落库改造、插件「什么时候该发语音」的判断 —— 全属插件或现有逻辑，本仓不碰。
 
 ---
 

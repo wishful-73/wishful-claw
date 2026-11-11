@@ -1,6 +1,8 @@
 import { createHash, randomBytes } from 'crypto'
 import {
   DEFAULT_WEIXIN_CDN_BASE_URL,
+  WeixinUploadMediaType,
+  WeixinVoiceEncodeType,
   type GetUpdatesResponse,
   type WeixinCdnMedia,
   type WeixinGetConfigResponse,
@@ -358,7 +360,7 @@ export class WeixinApi {
     const uploaded = await this.uploadMedia({
       toUserId: params.toUserId,
       buffer: params.buffer,
-      mediaType: 1,
+      mediaType: WeixinUploadMediaType.IMAGE,
       cdnBaseUrl: params.cdnBaseUrl,
       signal: params.signal
     })
@@ -402,7 +404,7 @@ export class WeixinApi {
     const uploaded = await this.uploadMedia({
       toUserId: params.toUserId,
       buffer: params.buffer,
-      mediaType: 3,
+      mediaType: WeixinUploadMediaType.FILE,
       cdnBaseUrl: params.cdnBaseUrl,
       signal: params.signal
     })
@@ -424,6 +426,67 @@ export class WeixinApi {
         },
         file_name: params.fileName,
         len: String(uploaded.fileSize)
+      }
+    })
+
+    return this.sendItems({
+      toUserId: params.toUserId,
+      contextToken: params.contextToken,
+      items,
+      signal: params.signal
+    })
+  }
+
+  /**
+   * 发送语音消息（`type: 3` + `voice_item`）。结构按官方 iLink Bot SDK
+   * （`abczsl520/weixin-bot-sdk` → `bot.js:sendVoice`）核对，不再是图片同构推断：
+   *
+   * 1. 上传 `media_type: 4` —— 枚举 IMAGE 1 / VIDEO 2 / FILE 3 / **VOICE 4**；与消息
+   *    `item.type`（VOICE = 3）不是同一套编号，混用会传上去但微信侧认不出；
+   * 2. `voice_item.media` 加密块与 image / file 同构，`aes_key` 同样 hex → base64；
+   * 3. 没有 `voice_len`，官方是 `encode_type` / `sample_rate` / `bits_per_sample` / `playtime`；
+   * 4. `encodeType`（见 `WeixinVoiceEncodeType`）默认 silk；喂 mp3 / amr / opus 要显式传，否则能上传但解不出声。
+   */
+  async sendVoice(params: {
+    toUserId: string
+    contextToken: string
+    buffer: Buffer
+    encodeType?: number
+    sampleRate?: number
+    bitsPerSample?: number
+    /** 时长（毫秒）。0 表示由服务端自行判定 */
+    playtime?: number
+    text?: string
+    cdnBaseUrl?: string
+    signal?: AbortSignal
+  }): Promise<{ messageId: string }> {
+    const uploaded = await this.uploadMedia({
+      toUserId: params.toUserId,
+      buffer: params.buffer,
+      mediaType: WeixinUploadMediaType.VOICE,
+      cdnBaseUrl: params.cdnBaseUrl,
+      signal: params.signal
+    })
+
+    const items: Array<Record<string, unknown>> = []
+    if (params.text) {
+      items.push({
+        type: 1,
+        text_item: { text: params.text }
+      })
+    }
+    items.push({
+      type: 3,
+      voice_item: {
+        media: {
+          encrypt_query_param: uploaded.downloadEncryptedQueryParam,
+          aes_key: encodeOutboundMediaAesKey(uploaded.aesKeyHex),
+          encrypt_type: 1
+        },
+        encode_type: params.encodeType ?? WeixinVoiceEncodeType.SILK,
+        sample_rate: params.sampleRate ?? 24000,
+        bits_per_sample: params.bitsPerSample ?? 16,
+        playtime: params.playtime ?? 0
       }
     })
 

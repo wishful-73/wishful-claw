@@ -4,8 +4,10 @@ import type { ManagedModelConfig } from './managed-models'
 import { builtinProviderPresets } from '@renderer/stores/providers'
 import {
   isUnownedBuiltin,
+  pickDefaultModel,
   reconcileProviders,
-  resetProviderToPreset
+  resetProviderToPreset,
+  resolveActiveProvider
 } from './provider-materialization'
 import { useProviderStore } from '@renderer/stores/provider-store'
 
@@ -227,45 +229,41 @@ export function ensureBuiltinPresets(): void {
   // held here and in the stores that reference provider ids stays valid.
   const updates: Partial<ProviderState> = { providers: nextProviders }
 
-  // S-318：preset 被移除后，落盘的 activeProviderId 可能指向已不在列表里的记录。
-  // 不拨正的话 `getActiveProvider()` 返回 null ⇒ 所有 inherit 会话都发不出消息。
-  // 挑选策略与 `deleteProvider` 的既有修复一致：优先 auth-ready 的一家。
-  const activeExists = (id: string | null | undefined): boolean =>
-    !!id && nextProviders.some((p) => p.id === id)
-  let activeId = state.activeProviderId
-  if (!activeExists(activeId) && nextProviders.length > 0) {
-    const picked =
-      nextProviders.find((p) => p.requiresApiKey === false || !!p.apiKey) ?? nextProviders[0]
-    updates.activeProviderId = picked.id
-    activeId = picked.id
-    // 旧 activeModelId 属于已被移除的那家，一并换成新 provider 的默认模型。
-    updates.activeModelId = pickDefaultModel(picked)?.id ?? ''
+  // S-359：active 必须「存在 + 已启用 + 有凭据」，三者缺一都要重挑。
+  //
+  // S-318 的旧写法只看「存在」和「免 key」，于是把未启用的 ollama 钉成了默认：
+  // 内置 projection 的 `enabled` 默认 false，而 ollama / lmstudio 的
+  // `requiresApiKey === false` 让它们无论是否启用都能命中挑选条件。挑选结果又会
+  // 落盘，此后 `activeExists` 恒真 ⇒ 永久停在它身上，用户看到「选了服务商但没有模型」。
+  //
+  // `resolveActiveProvider` 允许返回 null：一家都没启用时宁可不选 —— 输入框的
+  // 「未配置 API Key」横幅（`use-input-area-selectors`）会接住这个状态并引导配置。
+  const resolution = resolveActiveProvider(nextProviders, state.activeProviderId)
+  if (resolution.changed) {
+    updates.activeProviderId = resolution.providerId
+    updates.activeModelId = resolution.modelId ?? ''
   }
+  const activeId = updates.activeProviderId !== undefined
+    ? updates.activeProviderId
+    : state.activeProviderId
 
-  // If no active provider is set, pick the first available one
-  if (!activeId && nextProviders.length > 0) {
-    const firstProvider = nextProviders[0]
-    updates.activeProviderId = firstProvider.id
-    const defaultModel = pickDefaultModel(firstProvider)
-    if (defaultModel) updates.activeModelId = defaultModel.id
-  }
-  // If activeProviderId is set but activeModelId is empty, resolve a default model
-  if (activeId && !(updates.activeModelId ?? state.activeModelId)) {
+  // S-359：activeModelId 同样必须是「已启用」的模型。
+  // `defaultModel` 只是 preset 的提示值，用户把那个模型关掉之后不能被拨回来 ——
+  // 否则就是同一个病下沉一层：服务商选对了，模型还是停用的那个。
+  if (activeId) {
     const provider = nextProviders.find((p) => p.id === activeId)
-    const defaultModel = provider ? pickDefaultModel(provider) : undefined
-    if (defaultModel) updates.activeModelId = defaultModel.id
+    if (provider) {
+      const currentModelId = updates.activeModelId !== undefined
+        ? updates.activeModelId
+        : state.activeModelId
+      const currentModelUsable =
+        !!currentModelId && provider.models.some((m) => m.id === currentModelId && m.enabled)
+      if (!currentModelUsable) {
+        updates.activeModelId = pickDefaultModel(provider)?.id ?? ''
+      }
+    }
   }
 
   useProviderStore.setState(updates)
-}
-
-/** Pick a sensible default model for a provider. */
-function pickDefaultModel(provider: AIProvider): AIModelConfig | undefined {
-  return (
-    provider.models.find((m) => m.id === provider.defaultModel) ??
-    provider.models.find((m) => m.enabled && (!m.category || m.category === 'chat')) ??
-    provider.models.find((m) => m.enabled) ??
-    provider.models[0]
-  )
 }
 

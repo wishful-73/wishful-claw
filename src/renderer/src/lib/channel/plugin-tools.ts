@@ -1,4 +1,4 @@
-﻿import { toolRegistry } from '../agent/tool-registry'
+import { toolRegistry } from '../agent/tool-registry'
 import type { ToolHandler } from '../tools/tool-types'
 
 // ── Unified Plugin Tools ──
@@ -26,13 +26,31 @@ const channelSendFile: ToolHandler = {
     inputSchema: {
       type: 'object',
       properties: {
-        file_path: { type: 'string', description: 'Absolute local file path or HTTP/HTTPS URL' },
-        file_type: { type: 'string', description: 'Optional file type override' }
+        file_path: { type: 'string', description: 'Absolute local file path or HTTP/HTTPS URL' }
       },
       required: ['file_path']
     }
   },
   execute: async () => nativeOnlyPluginResult('ChannelSendFile'),
+  requiresApproval: (_input, ctx) => !ctx.channelSession
+}
+
+// S-356 D-10：`channel-descriptors.ts` 与 C# 的 `ChannelPluginToolProvider` 都有它，
+// 只有这张渲染端 handler 表漏了 —— 三处声明同一件事，缺一处就继续漂移。
+const channelSendAudio: ToolHandler = {
+  definition: {
+    name: 'ChannelSendAudio',
+    description: 'Send a voice message to the current channel conversation. The channel and chat are inferred from the current session.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        file_path: { type: 'string', description: 'Absolute local file path or HTTP/HTTPS URL' },
+        duration_ms: { type: 'number', description: 'Duration in milliseconds, used by channels that need it' }
+      },
+      required: ['file_path']
+    }
+  },
+  execute: async () => nativeOnlyPluginResult('ChannelSendAudio'),
   requiresApproval: (_input, ctx) => !ctx.channelSession
 }
 
@@ -58,6 +76,28 @@ const feishuSendImage: ToolHandler = {
   requiresApproval: (_input, ctx) => !ctx.channelSession
 }
 
+const feishuSendAudio: ToolHandler = {
+  definition: {
+    name: 'FeishuSendAudio',
+    description:
+      'Send a voice message to a Feishu chat. Feishu only accepts opus audio (about 60s max); other formats are rejected by the upload API rather than silently downgraded. Accepts either an absolute local file path or an HTTP/HTTPS URL.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        plugin_id: { type: 'string', description: 'The Feishu channel instance ID' },
+        chat_id: { type: 'string', description: 'The Feishu chat ID to send the voice message to' },
+        file_path: {
+          type: 'string',
+          description: 'Absolute local path to an opus file, OR an HTTP/HTTPS URL pointing to it'
+        }
+      },
+      required: ['plugin_id', 'chat_id', 'file_path']
+    }
+  },
+  execute: async () => nativeOnlyPluginResult('FeishuSendAudio'),
+  requiresApproval: (_input, ctx) => !ctx.channelSession
+}
+
 const feishuSendFile: ToolHandler = {
   definition: {
     name: 'FeishuSendFile',
@@ -71,12 +111,6 @@ const feishuSendFile: ToolHandler = {
         file_path: {
           type: 'string',
           description: 'Absolute local file path OR an HTTP/HTTPS URL pointing to the file'
-        },
-        file_type: {
-          type: 'string',
-          description:
-            'Override file type: opus, mp4, pdf, doc, xls, ppt, or stream. Omit to auto-detect from extension.',
-          enum: ['opus', 'mp4', 'pdf', 'doc', 'xls', 'ppt', 'stream']
         }
       },
       required: ['plugin_id', 'chat_id', 'file_path']
@@ -135,6 +169,33 @@ const weixinSendFile: ToolHandler = {
     }
   },
   execute: async () => nativeOnlyPluginResult('WeixinSendFile'),
+  requiresApproval: (_input, ctx) => !ctx.channelSession
+}
+
+const weixinSendAudio: ToolHandler = {
+  definition: {
+    name: 'WeixinSendAudio',
+    description:
+      'Send a voice message to an official Weixin chat. Accepts either an absolute local file path or an HTTP/HTTPS URL. `encode_type` is inferred from the file extension (silk / mp3 / amr / speex / ogg / opus / wav / pcm). Optionally send `content` as a text message before the voice message.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        plugin_id: { type: 'string', description: 'The official Weixin channel instance ID' },
+        chat_id: { type: 'string', description: 'The Weixin chat ID to send the voice message to' },
+        file_path: {
+          type: 'string',
+          description: 'Absolute local file path OR an HTTP/HTTPS URL pointing to the audio'
+        },
+        content: {
+          type: 'string',
+          description: 'Optional text to send before the voice message as a separate text message'
+        },
+        duration_ms: { type: 'number', description: 'Optional audio duration in milliseconds' }
+      },
+      required: ['plugin_id', 'chat_id', 'file_path']
+    }
+  },
+  execute: async () => nativeOnlyPluginResult('WeixinSendAudio'),
   requiresApproval: (_input, ctx) => !ctx.channelSession
 }
 
@@ -348,6 +409,7 @@ const feishuBitableDeleteRecords: ToolHandler = {
 const FEISHU_TOOLS: ToolHandler[] = [
   feishuSendImage,
   feishuSendFile,
+  feishuSendAudio,
   feishuListChatMembers,
   feishuAtMember,
   feishuSendUrgent,
@@ -360,8 +422,12 @@ const FEISHU_TOOLS: ToolHandler[] = [
   feishuBitableDeleteRecords
 ]
 
-const WEIXIN_TOOLS: ToolHandler[] = [weixinSendImage, weixinSendFile]
-const COMMON_PLUGIN_TOOL_HANDLERS: ToolHandler[] = [channelSendImage, channelSendFile]
+const WEIXIN_TOOLS: ToolHandler[] = [weixinSendImage, weixinSendFile, weixinSendAudio]
+const COMMON_PLUGIN_TOOL_HANDLERS: ToolHandler[] = [
+  channelSendImage,
+  channelSendFile,
+  channelSendAudio
+]
 const COMMON_PLUGIN_TOOL_NAMES = [
   ...COMMON_PLUGIN_TOOL_HANDLERS,
   pluginSendMessage,

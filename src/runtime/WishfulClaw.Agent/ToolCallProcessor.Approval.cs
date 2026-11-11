@@ -123,7 +123,7 @@ public static partial class ToolCallProcessor
         JsonHelpers.GetBool(parameters, "channelSession", false);
 
     private static bool IsChannelFileTool(string toolName) =>
-        toolName is "ChannelSendImage" or "ChannelSendFile" or
-                   "WeixinSendImage" or "WeixinSendFile" or
-                   "FeishuSendImage" or "FeishuSendFile";
+        toolName is "ChannelSendImage" or "ChannelSendFile" or "ChannelSendAudio" or
+                   "WeixinSendImage" or "WeixinSendFile" or "WeixinSendAudio" or
+                   "FeishuSendImage" or "FeishuSendFile" or "FeishuSendAudio";
 }

@@ -1,6 +1,31 @@
 export const DEFAULT_WEIXIN_BASE_URL = 'https://ilinkai.weixin.qq.com'
 export const DEFAULT_WEIXIN_CDN_BASE_URL = 'https://novac2c.cdn.weixin.qq.com/c2c'
 
+/**
+ * `getuploadurl` 的 `media_type` 枚举。
+ *
+ * ⚠️ 跟消息 `item_list[].type` 是**两套编号**（那边 TEXT 1 / IMAGE 2 / VOICE 3 /
+ * FILE 4 / VIDEO 5），混用会传上去但微信侧认不出。
+ */
+export const WeixinUploadMediaType = {
+  IMAGE: 1,
+  VIDEO: 2,
+  FILE: 3,
+  VOICE: 4
+} as const
+
+/** 语音 `voice_item.encode_type` 枚举，值与官方 iLink Bot SDK 一致 */
+export const WeixinVoiceEncodeType = {
+  PCM: 1,
+  ADPCM: 2,
+  FEATURE: 3,
+  SPEEX: 4,
+  AMR: 5,
+  SILK: 6,
+  MP3: 7,
+  OGG_SPEEX: 8
+} as const
+
 export interface WeixinCdnMedia {
   encrypt_query_param?: string
   aes_key?: string
@@ -30,7 +55,14 @@ export interface WeixinImageItem {
 export interface WeixinMessageItem {
   type?: number
   text_item?: { text?: string }
-  voice_item?: { text?: string }
+  voice_item?: {
+    text?: string
+    media?: WeixinCdnMedia
+    encode_type?: number
+    sample_rate?: number
+    bits_per_sample?: number
+    playtime?: number
+  }
   image_item?: WeixinImageItem
   file_item?: { file_name?: string }
   video_item?: unknown

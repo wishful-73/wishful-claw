@@ -62,3 +62,84 @@
   - 落法钉死：`sendMedia` 前查 `supportedMediaKinds`，不含目标 kind 就直接走 `sendMessage(text)` —— **不抛错、不静默丢弃、不弹窗**。
   - **调用方（插件）不需要知道这家支持什么，底座替它退。** 这条是「本仓做底座」原则的直接推论：让插件去判断七家各自的媒体能力，等于把底座的活推给插件。
   - ⇒ S-352 §5.2 方案 **C 定案**（单一 `sendMedia` + `supportedMediaKinds` 只读声明），阶段二「规划」标记完成。开工前置仍是**刀 0 七家能力逐家实测**，未变。
+- **10:52 老大一句「247不是早就说的关掉么」揪出一处自留的假条目。**
+  - 事实：S-247 在 **10:24 就关了**（`7dcdc73b`，我自己提的），而 plan.md §三 的待拍板表到 10:52 还把它列成「**待定**」。
+  - **根子**：关闭动作和「待办清单」两处各写各的 —— 单子标了 ✅，清单里那一行却没人回去清。**清单会因此越攒越多假条目，下个迭代又照着它排刀。**
+  - **改法**：plan.md §三 改成「无待拍板事项」，两条裁定并列 ✅；并写死一条规矩 —— **关单的同一次编辑里，必须回头把 plan / raw 里对应的待办行一起清掉。**
+  - 顺手订正同一行的错述：原写「探针已移除」，实际被删的只是渲染端 `renderer-memory-probe.ts`，**主进程 `memory-monitor.ts` 一直在跑**（`main/index.ts:359-360`）。跟 §六 S-247 那条订正是同一件事，两处都改。
+  - **本刀不 commit** —— 属文档订正，按纪律攒进收尾刀。
+
+## 2026-11-09 11:0x~11:3x · 老大「继续推进」⇒ S-352 刀 0 / 刀 1 / 刀 2 三刀落地
+
+- **刀 0（探索）落地时揪出登记里的两个事实错误**，两条都是我自己挖的坑：
+  - **漏了一家** —— 登记时按「七家」算，实际是**八家**，漏了 **whatsapp**（`whatsapp-service.ts` 同样只有 `sendMessage(chatId, content)`）。
+  - **微信判错** —— 登记写「微信 `sendItems` 是开放式 `item_list`，未验证语音」，实际 `WeixinService` 上**早就有了** `sendImage(chatId, buffer, text?)` / `sendFile(...)`（`weixin-service.ts:159/168`）。**根子：我只看到协议层（`weixin-api.ts`）就下了结论，没往上翻一层服务层。**
+  - ⇒ 定性变了：**不是「补新能力」，是「把已经有的两家长在私有分支里的能力收编，再给其余六家补」**。
+- **一个反复出现的病根：同一件事有两份实现。** 飞书和微信都是「IPC handler 一份 + `execute*ChannelTool` 一份」，各自把「读源 → 上传 → 发送」抄一遍。收编的价值不只是多个统一入口，**更是把抄出来的第二份删掉** —— 否则改一处漏一处，谁也说不清线上跑的是哪份。
+- **`caption` 这个字段是「不改行为」逼出来的。** 微信 `sendImage` 第三个参数 `text?` 是附言，原 handler 一直在传 `args.content`；载荷里没有格就只能丢，那是真行为变化。所以加 `caption?`，飞书**忽略**它（飞书只认 key，要带文字得再发一条、消息条数会变）。**「文字必须送达」的调用方自己另发 `sendMessage`**，不靠这个字段。
+- **`WeixinService.sendImage` / `sendFile` 删了**（收编后零调用方）。留着就是下一次又有人从私有分支走的入口。协议层 `api.sendImage` / `api.sendFile` 保留。
+- **`feishu-service.ts` 501 行加豁免**（AGENTS.md §大文件拆分第 5 条第 3 类）：WS 生命周期 / 流式卡片轮转 / 入站媒体下载共享多份可变状态，拆开要新增中间层；出站媒体已抽走。
+- **两个 `audio` 都不声明**：飞书要 `msg_type: 'audio'`（现有 `sendFileMessage` 硬编码 `'file'`）；微信入站已确证 `type: 3` + `voice_item`，但**出站结构一次没验过**。**验完再加，不猜。**
+- **门禁**：两刀各跑一次 `npm run typecheck` 三配置 0 错 + `npm test` **130/130**。
+- **提交**：`14837e16`（刀 1）→ `405bc9df`（刀 2）。plan.md 刀表与本节留到收尾刀。
+
+## 2026-11-09 12:xx · S-352 刀 3：audio 出站 —— 上一段那套「推断」全废
+
+- **起因**：老大「所以我们要做的是基座…至于怎么录音 怎么转写 那是另一个项目的事」+「我要的是能发语音」。
+  上一段曾说「两个 audio 都不声明，验完再加，不猜」—— 但**根本没料可验**：环境里没有
+  ffmpeg、没有 opus 样本、四家参考项目全无实现。老大 11:17 点了一句「不确认的可以去网上搜索方案，
+  而不是自己蒙头去造」，这才去翻外网，一翻就翻到了官方 SDK。
+- **关键证据**：[`abczsl520/weixin-bot-sdk`](https://github.com/abczsl520/weixin-bot-sdk)，
+  描述里明写 `Send/receive text, images, videos, files, and voice`。`src/bot.js:sendVoice` 是完整原型。
+- **上一段写的那三处推断，两处错、一处对**：
+  | 项 | 推断 | 实际 |
+  |---|---|---|
+  | 上传 `media_type` | `2` | **`4`** —— 枚举 IMAGE 1 / VIDEO 2 / FILE 3 / **VOICE 4**，跟消息 `item.type`（VOICE = 3）**是两套编号** |
+  | 时长字段 | `voice_len` | **不存在**，官方是 `encode_type` / `sample_rate` / `bits_per_sample` / `playtime` |
+  | 加密块 | 与 image/file 同构 | **对**，唯一一条对的 |
+  - 按旧代码发出去，`media_type: 2` 会被当**视频**上传。CDN 只看字节和 key，所以上传会「成功」——
+    **最容易骗过自己的一种失败**。
+- **改成枚举常量**：`WeixinUploadMediaType` / `WeixinVoiceEncodeType` 进 `weixin-types.ts`；
+  `sendImage` / `sendFile` 的裸数字 `1` / `3` 一并换掉。同一个文件里两种写法并存，就是下一个坑。
+- **`inferVoiceEncodeType(fileName)`** 按扩展名推 `encode_type`。原来的兜底名 `audio.opus`
+  跟默认 `silk` 是自相矛盾的，兜底改成 `audio.silk`。`opus → OGG_SPEEX`（官方枚举无独立 opus 项），
+  注释标了「真机播不出来先来改这行」。
+- **工具入口才是最后一环**：协议写对但 agent 调不到，等于没做。七个文件一串：
+  `channel-descriptors` → `ChannelPluginToolProvider.cs` → `AgentRuntimeChannelPluginExecutor.cs`
+  （白名单 + 路由 + `RequiresApproval`）→ `ToolCallProcessor.Approval.cs` → `plugin-tools.ts`
+  → `locales/{zh,en}` → `messagepack-channel-routing.ts`。
+- **`messagepack-channel-routing.ts` 这条漏了会被测试当场抓住**：`npm test` 直接报
+  「registered on `<channel>:msgpack` only but nothing routes to it」。那条测试就是为这种事写的，
+  这次真派上用场了。
+- **顺手发现一个既有缺陷，没修**：`FeishuSendImage` / `WeixinSendImage` 的 schema 写 `imagePath`，
+  但 `R(call, "file_path")` 的回落规则是「有下划线才转 camelCase」，`imagePath` 没下划线 ⇒
+  **模型照 schema 传 `imagePath` 会读到空字符串**。audio 三个工具我直接写 `filePath` 避开了。
+  修它属于另一条线，记在 §6.5。
+- **`weixin-api.ts` 压到正好 500 行**（原 496，加字段后 506，压注释回落）。全程没有走豁免。
+- **门禁**：`npm run typecheck` 三配置 0 错｜`npm test` **130/130**｜`dotnet build` 两套 sln
+  各 0 错误（主 sln 2 个 `NU1903` = S-320 挂账）。
+- **状态**：S-352 代码部分收口。剩「微信 `encode_type` 真机是否匹配」要有样本才能验，不是欠账。
+
+- **13:xx S-353 实施（`ab2b2dbe`）** —— S-352 刀 3 收尾时顺手发现的既有缺陷，老大 11:38「要修啊，登记需求，然后根据开发工作流推进」⇒ 当场登记 + 实施。与 S-352 同线，但独立一刀。
+  - **病灶一句话**：schema 用驼峰（`filePath` / `userIds` / `recordIds`），路由代码按蛇形读（`file_path` / `user_ids` / `record_ids`），而 `JsonHelpers` 全是 `TryGetProperty` 精确匹配。旧的 `R()` 只给必填字符串打了个「名字含下划线才回落驼峰」的补丁 ⇒ 可选字段、数字、数组、布尔**全部读不到**，模型照 schema 传了也白传，报错还像是模型没传参。
+
+## 2026-11-11
+
+- **09:1x dev 只读审查交回 13 条发现**（`dev/v3-iter-9` HEAD `ab2b2dbe`，基线 `v1.0.8`，34 文件 / +1801 −233 + 项目级扫描）。台账 [review-2026-11-11.md](requirements/review-2026-11-11.md)，拆成 4 单：**S-354**（D-1/2/3/5，P1×4）／**S-355**（D-6/7，P1×2 含安全）／**S-356**（D-4/8/9/10，P2×4）／**S-357**（D-11 lint，不占刀序）。D-12 / D-13 不立项。
+  - **一句话结论**：问题不在「写码」，在「接线」—— 零件全在，线没接。**与 v3-iter-7 的迭代标题是同一个病，第二次犯。**
+  - **我自己复核了 D-1 与 D-2，都成立**。D-1：`grep channel-media` 全仓零 import，而 `feishu-service.ts:359` / `weixin-service.ts:165` 各写各的 `sendMedia`；D-2：`ChannelPluginToolProvider.cs:35` 无条件注册 + `ChannelOnly = ["*:channel@*"]` 不区分渠道，而 `ResolveGenericRoute`（`AgentRuntimeChannelPluginExecutor.cs:119-123`）只认 weixin/feishu，其余返回 `null` ⇒ `:55` 报 `Unsupported channel plugin tool`。
+- **⚠️ 09:2x 揪出一个流程病：dev 建了单、写了台账，`plan.md` 一个字没动。**
+  - `raw-requirements.md` §五 登记得挺完整，可 `plan.md` 刀序表第 38 行还挂着「降级链路 ✅ 已随刀 1 交付（`channels/channel-media.ts`）」—— **正是 D-1 判定为假的那一句**。
+  - 11-09 那次是「**关了单，清单没清**」（S-247 关了但待办表还列着）；这次是「**建了单，清单没更**」。两次同根：**单子与清单两处各写各的**。
+  - ⇒ **规矩扩成双向**：建单的同一次编辑里，把 `plan.md` 刀序表 + `raw-requirements.md` 实施项表一起加上；关单的同一次编辑里，把两处的状态行一起改。**单子与清单永不同步，就等于没有清单。** 已写进 [plan.md](plan.md) §三 第二条自省。
+- **09:2x 老大「先补文档，然后根据开发工作流推进」** ⇒ 本轮先只补文档，不动代码：
+  - `plan.md`：撤回第 38 行的假结论，改为「代码存在但零 import，真接线见刀 9」；新增 **§二·乙 第二轮刀序（刀 9 ~ 12）**；§三 拍板表从「无」改为「1 条待拍板（D-7）+ 2 条已定」。
+  - `raw-requirements.md`：§〇 标题从「实施项（1 条）」订正为「（6 条）」（本来就漏算了 S-353），新增 **§〇·乙** 四行；§五 末尾「本轮没有动 plan.md」改为已处置。
+  - 本 changelog 条目。
+- **刀序排定：S-354（刀 9）→ S-355（刀 10）→ S-356（刀 11）→ S-357（不占刀序）**。S-354 最前，因为 D-1 是「文档说交付了、代码没生效」，不补则下一迭代照假结论排刀；S-355 排在 S-356 之前，因为 D-6 与「卡炸 / 内存暴涨」同源，是 P1 不是清理项。
+- **⏳ 新增一条待拍板：D-7 路径边界**。渠道会话里这批文件工具**免审批直接执行**（`ToolCallProcessor.Approval.cs:81-84`，既有设计 —— 渠道弹不出审批框），而 `readBinarySource` 对 `source` 零校验 ⇒ `ChannelSendImage(source: "C:\Users\x\.ssh\id_rsa")` 可把私钥当图片发群。本迭代把 `ChannelSendAudio` 加进 `IsChannelFileTool`，等于多开一个入口。**「允许发哪些目录」是产品策略不是技术判断，我不替老大定**；方案 A（只登记风险）/ B（白名单）/ C（凭据类黑名单）已列进 [plan.md](plan.md) §三，我的倾向是 **A + C**。
+  - **治根不是补名字**：`TryGetProp` 做驼峰/蛇形双向归一，`R` / `RArray` / `RBool` / `WOpt` / `WOptI` 一律走它。⇒ 旧缓存 prompt 里残留的老名字天然兼容，不用写兼容分支。
+  - **实施中另挖出两处同源缺陷**：`BitableMut` 的 `if…else…;` 尾巴无条件执行（真传了数组必抛 `InvalidOperationException`，不只是读不到）；`FeishuBitableListApps` 的执行体是 `_ => { }`，一个字段都不写，schema 里那个 `pageSize` 永远送不到插件。
+  - **一条方法论**：这个 executor 坏到现在没人发现，因为 `npm test` 130 条里**没有一条覆盖它**。补的 22 条断言钉的不是「某个函数返回什么」，而是**「`Get*` 必须与 `As*` 同源」** —— 原来 `GetString` / `GetBool` / `GetIntNullable` / `GetStringArray` 各把同一套「判 ValueKind 再取值」写了一遍，四份实现、四条演化路径，正是它们分叉才养出这个缺陷；只要有人再给其中一个单独写分支，断言立刻红。
+  - **登记文档自身的错也记一笔**：S-353 初次登记时那张「schema 属性」对照表是从 executor 的读取代码**反推**的，没打开 provider 核，三处记错（`FeishuAtMember` / `FeishuSendUrgent` / `FeishuListChatMembers`）。实施时逐行实读订正，教训写进了单内 §3.3 的订正记录：**凡「对方那一侧长什么样」的列，必须打开对方文件看，不能从自己这侧推。**
+  - ⚠️ **真机未测**（飞书 / 微信都没有发图、发文件、@人、加急、多维表格增删的实测环境）⇒ 本单剩余风险集中在「编译过 ≠ 能发」。

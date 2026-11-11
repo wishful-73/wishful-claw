@@ -3,15 +3,31 @@
 > 拆分于 2026-11-09 10:0x（老大「拆分新迭代」）。来源 = **v3-iter-8 收尾移交的挂账与验收欠账** + **R 系（1.0 后全局方向）的底座缺口**。
 > 本文件只列清单与依据，刀序见 [plan.md](plan.md)。
 
-## 〇、本迭代实施项（1 条）
+## 〇、本迭代实施项（6 条）
 
 > 2026-11-09 10:33 老大钉死归属原则：「**本仓主要是负责做插件底座。不负责具体功能实现**」⇒ R 系里具体功能（转写 / TTS 合成 / 说话人分离 / 会议 UI）全部不进本仓，本仓只补**底座缺的那一格通道**。
 
 | 编号 | 标题 | 状态 | 上位 | 依据 |
 |---|---|---|---|---|
-| [S-352](requirements/S-352.md) | 渠道出站媒体通道 —— 统一接口只认文本，飞书/微信靠私有 IPC 直通 | **刀 0 / 刀 1 已交付；刀 2 微信待做** | **R-5** | 统一接口 `MessagingChannelService`（`channel-types.ts:132-156`）出站只有 `sendMessage(chatId, content: string)` / `replyMessage(messageId, content: string)`；而入站 `ChannelIncomingMessageData`（`:97-127`）有 `images` / `audio` / `mediaRefs` / `msgType` **四个媒体字段** ⇒ **收的方向有媒体，发的方向没有**。**八家**实况：飞书 `feishu-media-api.ts:199/220` 有，绕过统一接口走私有 IPC；**微信 `weixin-service.ts:159/168` 也有**（`sendImage` / `sendFile`，此前登记误判为「未验证」）；**钉钉 / Discord / QQ / Telegram / 企业微信 / WhatsApp 六家纯文本** |
+| [S-352](requirements/S-352.md) | 渠道出站媒体通道 —— 统一接口只认文本，飞书/微信靠私有 IPC 直通 | **刀 0~3 已交付，代码收口** | **R-5** | 统一接口 `MessagingChannelService`（`channel-types.ts:132-156`）出站只有 `sendMessage(chatId, content: string)` / `replyMessage(messageId, content: string)`；而入站 `ChannelIncomingMessageData`（`:97-127`）有 `images` / `audio` / `mediaRefs` / `msgType` **四个媒体字段** ⇒ **收的方向有媒体，发的方向没有**。**八家**实况：飞书 `feishu-media-api.ts:199/220` 有，绕过统一接口走私有 IPC；**微信 `weixin-service.ts:159/168` 也有**（`sendImage` / `sendFile`，此前登记误判为「未验证」）；**钉钉 / Discord / QQ / Telegram / 企业微信 / WhatsApp 六家纯文本** |
 
-> **能力实测口径**：八家已全部实读（S-352 §3.3）。**飞书 + 微信有凭证**（老大 10:55），其余六家无凭证 ⇒ `supportedMediaKinds` 留空、自动降级发文本，**这是正确结论，不是失败**。
+> **能力实测口径**：八家已全部实读（S-352 §3.3）。**飞书 + 微信有凭证**（老大 10:55），其余六家无凭证 ⇒ `supportedMediaKinds` 留空，**这是正确结论，不是失败**。
+> ⚠️ **订正（2026-11-11）**：此句原写「留空**自动降级发文本**」—— 降级链路代码存在但**全仓零 import（D-1），从未生效**，当前实际行为是 `throw`。真接线见 [S-354](requirements/S-354.md) 刀 9。
+
+| 编号 | 标题 | 状态 | 上位 | 依据 |
+|---|---|---|---|---|
+| [S-353](requirements/S-353.md) | 渠道插件工具参数名对不上 —— schema 写 camelCase，executor 精确读 snake_case | **已实施，待真机验收**（`ab2b2dbe`） | R-5（S-352 同线） | `R()` 带 camelCase 回落是唯一的安全网，而 `WOpt`/`WOptI`/`GetStringArray`/`GetBool`/`TryGetProperty` 全部走 `JsonHelpers` 的**精确匹配**（`JsonHelpers.cs:7/16/55/111` 全是 `TryGetProperty`）。实读 17 个工具，**7 处参数读不到**：`FeishuSendImage`/`WeixinSendImage` 的 `imagePath`、`FeishuAtMember` 的 `userId`(单数)/`content`、`FeishuSendUrgent` 的 `userIds`/`urgentType`(单值)、`FeishuBitableDeleteRecords` 的 `recordIds`、`FeishuListChatMembers` 的 `pageSize`/`pageToken` 根本没声明、`ChannelSendAudio` 的 `durationMs` 没被写出。渲染端 `plugin-tools.ts` 的 `registerPluginTools()` **零调用**，所以模型只看 C# 那套 schema。**实施时另发现两处同源缺陷**：`BitableMut` 的 `if…else…;` 无条件尾巴（真传数组必抛异常）、`FeishuBitableListApps` 执行体空写 |
+
+### 〇·乙、第二轮（2026-11-11 审查补刀，4 条）
+
+> 来源 [review-2026-11-11.md](requirements/review-2026-11-11.md)，刀序见 [plan.md](plan.md) §二·乙。**四条全部待实施。**
+
+| 编号 | 标题 | 状态 | 上位 | 依据 |
+|---|---|---|---|---|
+| [S-354](requirements/S-354.md) | 渠道出站媒体「宣称已交付」的四条没有真正生效 | **待实施**（刀 9） | R-5 | D-1 `channel-media.ts` **全仓零 import**，降级从未生效 → `plan.md:38` 的「✅ 已交付」已撤回；D-2 `ChannelSendAudio` 在六家渠道可见（`ChannelPluginToolProvider.cs:35` 无条件注册，`ChannelOnly = ["*:channel@*"]` 不区分渠道）但 `ResolveGenericRoute`（`:119-123`）只认 weixin/feishu ⇒ 一调即报 `Unsupported channel plugin tool`；D-3 `feishu-outbound-media.ts:71-77` 注释说「强制 .opus」代码没强制；D-5 本迭代新增约 500 行媒体代码**零断言** |
+| [S-355](requirements/S-355.md) | 出站媒体来源读取无上限、无超时、同步读，且不做路径边界 | **待实施**（刀 10，D-7 需拍板） | R-5 × 内存线 | D-6 `channel-media-source.ts`：`:44` `fetch` 无 `AbortSignal`/timeout、`:49` 无 `content-length` 校验无大小上限、`:59` `fs.readFileSync` 同步阻塞；微信侧 `encryptOutboundMedia` 再复制一份 ⇒ 峰值 2~3N。D-7 渠道会话免审批（`ToolCallProcessor.Approval.cs:81-84`）+ `source` 零校验 ⇒ `.ssh/id_rsa` 可被当图片发群 |
+| [S-356](requirements/S-356.md) | 渠道工具参数与声明的一致性残留 | **待实施**（刀 11） | R-5（S-353 续） | D-4 `imagePath` → `filePath` 改名后 `TryGetProp` 只回落 `file_path`↔`filePath`，旧名两者都不命中；D-8 `FeishuMediaApi.downloadUrl` 零外部调用；D-9 `fileType` executor 仍写、handler 标 `@deprecated` 并忽略；D-10 渲染端 `plugin-tools.ts:414` 缺 `ChannelSendAudio`，与 descriptor / C# 三处不同步 |
+| [S-357](requirements/S-357.md) | 引入 TS 侧 lint | **不占本迭代刀序** | 项目级 | D-11 `package.json` 里 eslint / prettier / biome **一个都没有**，根目录无 lint 配置。本轮 13 条里至少 3 条（D-1 孤儿文件 / D-8 零调用方法 / D-10 零调用导出）是 `no-unused-vars` 或「导出零引用」检查能自动抓的 |
 
 ## 一、挂账与阻塞继承（6 条，不占刀序）
 > 前 5 条从 [../iter-v3-8/raw-requirements.md](../iter-v3-8/raw-requirements.md) §二 原样继承，**没有一条在本迭代变得可做**。状态行不改，只换挂靠的迭代文档。
@@ -63,3 +79,23 @@
 | S-265 裸 body 400 | 曾在 v3-iter-4 的清单里挂着 | 需求单头两行已写「**状态：❌ 已撤销（2026-11-01 20:5x）**，现象已不再发生，不立项、不加诊断列」 | **已经收口了**，不用再管 |
 
 > **四条判据合起来是一条**：移交项必须 `Test-Path` / 打开文件 / 查 commit 核过才算欠账；反过来，「以为没做」的也必须用同样方式核过才能登记。**两个方向都栽过** —— v3-iter-8 收尾把参考项目路径当欠账（假阳性），这次把 11 条已完成的当候选（假阴性）。
+
+## 五、代码审查台账（2026-11-11 → 已拆单 S-354 ~ S-357）
+
+> 正文见 [review-2026-11-11.md](requirements/review-2026-11-11.md)。**只读审查，未改代码、未跑门禁**，对象 `dev/v3-iter-9` HEAD `ab2b2dbe`，基线 `v1.0.8`。
+> 编号按「查最大编号 +1」自取，起点 S-354（此前最大为 S-353）。**13 条发现并成 4 个单**，合并依据是「同一批文件 + 同一个验收动作」。
+
+| 单 | 标题 | 收编的发现 | 级别 |
+|---|---|---|---|
+| [S-354](requirements/S-354.md) | 渠道出站媒体「宣称已交付」的四条没有真正生效 | D-1 降级链路孤儿 / D-2 可见性与路由不符 / D-3 飞书 opus 注释撒谎 / D-5 零测试 | **P1 ×4** |
+| [S-355](requirements/S-355.md) | 出站媒体来源读取无上限、无超时、同步读，且不做路径边界 | D-6 内存与阻塞 / D-7 免审批 + 零路径校验 | **P1 ×2**（含安全） |
+| [S-356](requirements/S-356.md) | 渠道工具参数与声明的一致性残留 | D-4 `imagePath` 改名不兼容 / D-8 `downloadUrl` 死代码 / D-9 `fileType` 写了不生效 / D-10 渲染端三处不同步 | P2 ×4 |
+| [S-357](requirements/S-357.md) | 引入 TS 侧 lint | D-11 无 eslint / prettier / biome | 工程基建 |
+| — | **不立项** | D-12 `TODO/FIXME/HACK` 248 处（建议收尾统计增量）／D-13 大文件（`AgentLoop.cs` 豁免理由成立，不强拆） | — |
+
+**待真机确认（挂 S-354 验收）**：T-1 微信 `playtime` 单位是毫秒还是秒 / T-2 `opus → OGG_SPEEX` 映射是否正确 / T-3 飞书拒 mp3 还是静默转。
+
+**建议顺序**：S-354（改文档或真接线）→ S-354 的 D-3（一行）→ S-354 的 D-5（最便宜的测试）→ S-356（一致性）→ S-355（单开挂内存线）→ S-357（单独排期，不占本迭代刀序）。
+
+> ✅ **已处置（2026-11-11 09:2x，老大「先补文档，然后根据开发工作流推进」）**：`plan.md:38` 的「降级链路 ✅ 已交付」**已撤回**并改为「代码存在但零 import，真接线见刀 9」；刀序表新增 §二·乙（刀 9 ~ 12）；§〇·乙 补登四张单。
+> **同时记一条**：本次 dev 建了四张单 + 台账、§五 也写了，**但 `plan.md` 一个字没动** —— 与 11-09「关了单、清单没清」是同一个病的两个方向。规矩已扩成双向，见 [plan.md](plan.md) §三 第二条自省。

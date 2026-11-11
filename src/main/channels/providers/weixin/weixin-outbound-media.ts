@@ -25,7 +25,7 @@ import { readBinarySource } from '../../channel-media-source'
  * ⚠️ `opus` 映射到 `OGG_SPEEX`：官方枚举里没有独立的 opus 项，最接近的就是它。
  * 若真机上 opus 播不出来，先来改这一行。
  */
-function inferVoiceEncodeType(fileName: string): number {
+export function inferVoiceEncodeType(fileName: string): number {
   const ext = fileName.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] ?? ''
   switch (ext) {
     case 'silk':

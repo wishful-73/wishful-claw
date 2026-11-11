@@ -69,7 +69,10 @@ export async function sendFeishuMedia(
   }
 
   if (media.kind === 'audio') {
-    // 飞书只认 opus；文件名强制 .opus，否则 uploadFile 的 file_type 与扩展名不一致
+    // 飞书语音只收 opus。这里**既不转格式、也不强制改扩展名** —— 传 `.mp3` 就会变成
+    // `uploadFile(buf, 'x.mp3', 'opus')`，飞书自己拒。故意让它炸得清楚：错误信息是
+    // 飞书侧的，比「把 mp3 悄悄贴上 .opus 标签发出去、对方播不出来」好查。
+    // `'audio.opus'` 只是推断不出文件名时的兜底，不是强制后缀。
     const { buffer } = await readBinarySource(media.source, 'audio.opus')
     const fileName = media.fileName ?? resolveSourceFileName(media.source, 'audio.opus')
     const fileKey = await api.media.uploadFile(buffer, fileName, 'opus')

@@ -115,6 +115,8 @@ internal static partial class Program
             AssertSandboxProjectsParent();
             AssertProjectsParentDefault();
 
+            AssertChannelMediaToolsMatchCapability(registry);
+
             Console.WriteLine($"Channel tool visibility regression checks passed ({_checks} assertions).");
             return 0;
         }
@@ -338,6 +340,56 @@ internal static partial class Program
     {
         var parameters = Parse(parametersJson);
         return AgentRunContextPolicy.ResolveAvailableMode(parameters, AgentRunContextPolicy.Resolve(parameters));
+    }
+
+    // ── S-354 D-2: 出站媒体工具只出现在能发出它的渠道里 ──
+
+    /// <summary>
+    /// 三个通用出站媒体工具此前对所有渠道会话一视同仁 —— 钉钉群里的模型看得见
+    /// <c>ChannelSendAudio</c>，一调就是 <c>Unsupported channel plugin tool</c>（可见性和能力在两个
+    /// 文件里各说各话）。判据现在是「这家渠道有没有 handler 路由」，与执行期同源。
+    ///
+    /// 三组断言缺一不可：能发的那家**不被误伤**、认不出的**一个都不留**、非渠道会话仍由
+    /// <c>VisibleScopes</c> 回答（这条判据不越权）。
+    /// </summary>
+    private static void AssertChannelMediaToolsMatchCapability(ToolRegistry registry)
+    {
+        string[] mediaTools = ["ChannelSendImage", "ChannelSendFile", "ChannelSendAudio"];
+
+        // 飞书 / 微信：三种形态都有 handler 路由，工具都该留着。
+        foreach (var pluginId in new[] { "feishu", "weixin" })
+        {
+            var runContext = AgentRunContextPolicy.Resolve(Parse(
+                $$"""{"sessionMode":"channel","channelSession":true,"pluginId":"{{pluginId}}","externalChatId":"oc_test"}"""));
+
+            AssertEqual(pluginId, runContext.ChannelProvider ?? "(null)", $"{pluginId} 渠道会话要认出 provider");
+            foreach (var name in mediaTools)
+            {
+                Assert(Allowed(runContext, registry, name), $"{pluginId} 发得出媒体，{name} 不该被收窄");
+            }
+        }
+
+        // 钉钉之类：没有 handler 路由，三个工具一个都不该出现。
+        var dingtalkContext = AgentRunContextPolicy.Resolve(Parse(
+            """{"sessionMode":"channel","channelSession":true,"pluginType":"dingtalk","pluginId":"dingtalk-1","externalChatId":"cid_test"}"""));
+
+        AssertEqual("(null)", dingtalkContext.ChannelProvider ?? "(null)", "钉钉认不出出站媒体 provider");
+        foreach (var name in mediaTools)
+        {
+            Assert(!Allowed(dingtalkContext, registry, name), $"钉钉发不了出站媒体，{name} 不该可见");
+        }
+
+        // 非渠道会话：这条判据不表态，交给 VisibleScopes（ChannelOnly）回答。
+        var projectChat = AgentRunContextPolicy.Resolve(
+            Parse("""{"scope":"project","projectId":"p1","collaborationMode":"chat"}"""));
+
+        AssertEqual("(null)", projectChat.ChannelProvider ?? "(null)", "非渠道会话不记 provider");
+        foreach (var name in mediaTools)
+        {
+            Assert(
+                !AgentRunContextPolicy.IsToolAllowed(projectChat, name, registry, channelSession: false),
+                $"项目 chat 会话里 {name} 由 ChannelOnly 挡掉");
+        }
     }
 
     /// <summary>

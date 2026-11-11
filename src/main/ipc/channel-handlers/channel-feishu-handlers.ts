@@ -5,6 +5,7 @@
  */
 
 import type { FeishuService } from '../../channels/providers/feishu/feishu-service'
+import { buildMediaFallbackText, sendMediaOrText } from '../../channels/channel-media'
 import { activeChannelManager, registerChannelMessagePackHandler } from './channel-handler-utils'
 import { startFeishuInstall, pollFeishuInstall } from '../../channels/providers/feishu/feishu-install'
 
@@ -19,11 +20,13 @@ export function registerFeishuHandlers(): void {
       if (!service?.api) return { error: 'Feishu plugin not running or not found' }
 
       try {
-        const result = await service.sendMedia(args.chatId, {
-          kind: 'image',
-          source: args.filePath
-        })
-        return { ok: true, messageId: result.messageId }
+        const result = await sendMediaOrText(
+          service,
+          args.chatId,
+          { kind: 'image', source: args.filePath },
+          buildMediaFallbackText('image')
+        )
+        return { ok: true, messageId: result.messageId, sentAs: result.sentAs }
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) }
       }
@@ -47,11 +50,13 @@ export function registerFeishuHandlers(): void {
     if (!service?.api) return { error: 'Feishu plugin not running or not found' }
 
     try {
-      const result = await service.sendMedia(args.chatId, {
-        kind: 'file',
-        source: args.filePath
-      })
-      return { ok: true, messageId: result.messageId }
+      const result = await sendMediaOrText(
+        service,
+        args.chatId,
+        { kind: 'file', source: args.filePath },
+        buildMediaFallbackText('file')
+      )
+      return { ok: true, messageId: result.messageId, sentAs: result.sentAs }
     } catch (err) {
       return { error: err instanceof Error ? err.message : String(err) }
     }
@@ -67,11 +72,13 @@ export function registerFeishuHandlers(): void {
       if (!service?.api) return { error: 'Feishu plugin not running or not found' }
 
       try {
-        const result = await service.sendMedia(args.chatId, {
-          kind: 'audio',
-          source: args.filePath
-        })
-        return { ok: true, messageId: result.messageId }
+        const result = await sendMediaOrText(
+          service,
+          args.chatId,
+          { kind: 'audio', source: args.filePath },
+          buildMediaFallbackText('audio')
+        )
+        return { ok: true, messageId: result.messageId, sentAs: result.sentAs }
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) }
       }
@@ -341,11 +348,13 @@ export async function executeFeishuChannelTool(
     case 'plugin:feishu:send-image': {
       if (!service?.api) return { error: 'Feishu plugin not running or not found' }
       try {
-        const result = await service.sendMedia(String(args.chatId ?? ''), {
-          kind: 'image',
-          source: String(args.filePath ?? '')
-        })
-        return { ok: true, messageId: result.messageId }
+        const result = await sendMediaOrText(
+          service,
+          String(args.chatId ?? ''),
+          { kind: 'image', source: String(args.filePath ?? '') },
+          buildMediaFallbackText('image')
+        )
+        return { ok: true, messageId: result.messageId, sentAs: result.sentAs }
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) }
       }
@@ -353,11 +362,13 @@ export async function executeFeishuChannelTool(
     case 'plugin:feishu:send-file': {
       if (!service?.api) return { error: 'Feishu plugin not running or not found' }
       try {
-        const result = await service.sendMedia(String(args.chatId ?? ''), {
-          kind: 'file',
-          source: String(args.filePath ?? '')
-        })
-        return { ok: true, messageId: result.messageId }
+        const result = await sendMediaOrText(
+          service,
+          String(args.chatId ?? ''),
+          { kind: 'file', source: String(args.filePath ?? '') },
+          buildMediaFallbackText('file')
+        )
+        return { ok: true, messageId: result.messageId, sentAs: result.sentAs }
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) }
       }
@@ -365,11 +376,13 @@ export async function executeFeishuChannelTool(
     case 'plugin:feishu:send-audio': {
       if (!service?.api) return { error: 'Feishu plugin not running or not found' }
       try {
-        const result = await service.sendMedia(String(args.chatId ?? ''), {
-          kind: 'audio',
-          source: String(args.filePath ?? '')
-        })
-        return { ok: true, messageId: result.messageId }
+        const result = await sendMediaOrText(
+          service,
+          String(args.chatId ?? ''),
+          { kind: 'audio', source: String(args.filePath ?? '') },
+          buildMediaFallbackText('audio')
+        )
+        return { ok: true, messageId: result.messageId, sentAs: result.sentAs }
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) }
       }

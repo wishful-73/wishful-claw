@@ -25,6 +25,25 @@ export interface ChannelSendResult {
   sentAs: ChannelMediaKind | 'text'
 }
 
+/** 形态的中文名。只用于降级提示，不进日志。 */
+const MEDIA_KIND_LABELS: Record<ChannelMediaKind, string> = {
+  image: '图片',
+  file: '文件',
+  audio: '语音'
+}
+
+/**
+ * 构造降级文本。
+ *
+ * 口径是「**原消息正文 + 一句说明**」：只发说明会让对方看到一句没头没尾的话，
+ * 只发正文对方又根本不知道「本来要发东西」。正文为空时才退成纯说明。
+ */
+export function buildMediaFallbackText(kind: ChannelMediaKind, caption?: string): string {
+  const notice = `（当前渠道不支持发送${MEDIA_KIND_LABELS[kind]}，已改为文字发送）`
+  const body = caption?.trim()
+  return body ? `${body}\n${notice}` : notice
+}
+
 /**
  * 本渠道能否发这种媒体。
  *

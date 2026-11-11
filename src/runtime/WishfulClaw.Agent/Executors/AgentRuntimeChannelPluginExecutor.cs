@@ -38,6 +38,14 @@ public static class AgentRuntimeChannelPluginExecutor
 
     public static bool IsChannelPluginTool(string toolName) => ChannelPluginToolNames.Contains(toolName);
 
+    /// <summary>
+    /// 三个「通用出站媒体」工具 —— 走 <see cref="ResolveGenericRoute"/>、渠道类型从 run 参数推的
+    /// 那一批。<c>FeishuSendImage</c> 之类写死渠道的不算：它们在别的渠道可见本身就说不通，但
+    /// 那是另一个问题，别混进这条判据。
+    /// </summary>
+    public static bool IsChannelMediaTool(string toolName) =>
+        toolName is "ChannelSendImage" or "ChannelSendFile" or "ChannelSendAudio";
+
     public static bool RequiresApproval(string toolName) =>
         toolName is "FeishuSendImage" or "FeishuSendFile" or "FeishuSendAudio" or "FeishuAtMember" or
                      "FeishuSendUrgent" or "WeixinSendImage" or "WeixinSendFile" or "WeixinSendAudio";
@@ -110,17 +118,44 @@ public static class AgentRuntimeChannelPluginExecutor
         };
     }
 
+    /// <summary>
+    /// 这家渠道的 provider key —— <c>weixin</c> / <c>feishu</c>，认不出返回 null。
+    ///
+    /// 路由（<see cref="ResolveGenericRoute"/>）和工具可见性（<c>AgentRunContextPolicy</c>）共用
+    /// 这一个判断，不各持一份能力表。S-352 的病根正是「注册期说支持、路由期说不认识」，两个
+    /// 文件谁都没错，合起来错 —— 所以这里必须是唯一入口。
+    /// </summary>
+    public static string? ResolveProvider(string? pluginType, string? pluginId)
+    {
+        var type = (pluginType ?? string.Empty).Trim().ToLowerInvariant();
+        if (type.Contains("weixin", StringComparison.Ordinal)) return "weixin";
+        if (type.Contains("feishu", StringComparison.Ordinal)) return "feishu";
+
+        var id = pluginId ?? string.Empty;
+        if (id.Contains("weixin", StringComparison.OrdinalIgnoreCase)) return "weixin";
+        if (id.Contains("feishu", StringComparison.OrdinalIgnoreCase)) return "feishu";
+
+        return null;
+    }
+
+    /// <summary>
+    /// 这家渠道能不能发出站媒体（image / file / audio）。
+    ///
+    /// 判据是「有没有 handler 路由」，不是另立一份 <c>supportedMediaKinds</c> 的副本 —— 那份
+    /// 能力表的真源在 TS 侧（<c>FEISHU_SUPPORTED_MEDIA_KINDS</c> / <c>WEIXIN_SUPPORTED_MEDIA_KINDS</c>），
+    /// C# 侧唯一能反映它的事实就是「这家有没有 send-image / send-file / send-audio 路由」。
+    ///
+    /// 目前两家三种形态都支持。哪天某家只能发图，先改能力表，再让这里按形态细分。
+    /// </summary>
+    public static bool SupportsOutboundMedia(string? provider) => provider is "weixin" or "feishu";
+
     private static (string? channel, Action<Utf8JsonWriter> writeExtra) ResolveGenericRoute(
         AgentRuntimeNativeToolCall call, JsonElement parameters, string kind)
     {
-        var pluginType = (JsonHelpers.GetString(parameters, "pluginType") ??
-                          JsonHelpers.GetString(parameters, "channelType") ?? string.Empty).ToLowerInvariant();
-        var pluginId = JsonHelpers.GetString(parameters, "pluginId") ?? string.Empty;
-        var route = pluginType.Contains("weixin") || pluginId.Contains("weixin", StringComparison.OrdinalIgnoreCase)
-            ? $"plugin:weixin:send-{kind}"
-            : pluginType.Contains("feishu") || pluginId.Contains("feishu", StringComparison.OrdinalIgnoreCase)
-                ? $"plugin:feishu:send-{kind}"
-                : null;
+        var provider = ResolveProvider(
+            JsonHelpers.GetString(parameters, "pluginType") ?? JsonHelpers.GetString(parameters, "channelType"),
+            JsonHelpers.GetString(parameters, "pluginId"));
+        var route = provider is null ? null : $"plugin:{provider}:send-{kind}";
         return (route, w =>
         {
             w.WriteString("chatId", JsonHelpers.GetString(parameters, "externalChatId") ??

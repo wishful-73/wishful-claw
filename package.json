@@ -120,7 +120,8 @@
     "test:sidebar-session-signature": "esbuild tests/sidebar-session-signature/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --alias:@shared=./src/shared --outfile=tests/sidebar-session-signature/out/program.cjs && node tests/sidebar-session-signature/out/program.cjs",
     "test:run-reply-window": "esbuild tests/run-reply-window/program.ts --bundle --platform=node --format=cjs --outfile=tests/run-reply-window/out/program.cjs && node tests/run-reply-window/out/program.cjs",
     "test:browser-summary-fallback": "esbuild tests/browser-summary-fallback/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/browser-summary-fallback/out/program.cjs && node tests/browser-summary-fallback/out/program.cjs",
-    "test:session-scoped-agent-state": "esbuild tests/session-scoped-agent-state/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/session-scoped-agent-state/out/program.cjs && node tests/session-scoped-agent-state/out/program.cjs"
+    "test:session-scoped-agent-state": "esbuild tests/session-scoped-agent-state/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/session-scoped-agent-state/out/program.cjs && node tests/session-scoped-agent-state/out/program.cjs",
+    "test:channel-media": "esbuild tests/channel-media/program.ts --bundle --platform=node --format=cjs --outfile=tests/channel-media/out/program.cjs && node tests/channel-media/out/program.cjs"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",

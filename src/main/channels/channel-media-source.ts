@@ -39,6 +39,63 @@ function tooLargeError(what: string, bytes: number): Error {
   )
 }
 
+// ── 凭据类路径黑名单（S-355 D-7） ──
+//
+// 渠道会话里这批文件工具是**免审批**的（`ToolCallProcessor.Approval.cs:81-84`，渠道弹不出
+// 审批框）。组合后果：群里有人说句话 → agent 在渠道会话 → `ChannelSendImage(source:
+// "C:\\Users\\x\\.ssh\\id_rsa")` → 当图片发到群里。免审批是既定设计，不动；那么「读哪个
+// 文件」就是唯一还能挡的地方。
+//
+// 黑名单天生有漏，这里只挡**最要命且没有正当发送理由**的那几类。不做白名单：那会把
+// 「把刚生成的图发出去」这个主场景也挡掉（生成目录可能在数据根之外）。
+
+/** 目录名（任一层命中即拒） */
+const BLOCKED_SEGMENTS = new Set(['.ssh', '.aws', '.gnupg', '.kube', '.docker'])
+
+/** 文件名 —— 只有这些名字的文件本身就是凭据容器 */
+const BLOCKED_FILE_NAMES = new Set([
+  '.env',
+  '.npmrc',
+  '.netrc',
+  '.pgpass',
+  'credentials',
+  'credentials.json'
+])
+
+/** SSH 私钥的标准文件名（`.pub` 是公钥，不拦） */
+const BLOCKED_PRIVATE_KEY_NAMES = new Set(['id_rsa', 'id_dsa', 'id_ecdsa', 'id_ed25519'])
+
+/** 证书 / 密钥容器的扩展名 */
+const BLOCKED_EXTENSIONS = new Set(['.pem', '.p12', '.pfx'])
+
+/**
+ * 本地路径是否可以出站。命中黑名单抛错 —— 宁可拒在读取之前，也不要先读到内存再判断。
+ *
+ * 只处理本地路径；URL 指向远端，不涉及本机凭据。
+ */
+export function assertOutboundSourceAllowed(value: string): void {
+  const trimmed = value.trim()
+  if (!trimmed || /^https?:\/\//i.test(trimmed)) return
+
+  const segments = trimmed.split(/[\\/]+/).filter(Boolean)
+  const blockedSegment = segments.find((segment) => BLOCKED_SEGMENTS.has(segment.toLowerCase()))
+  if (blockedSegment) {
+    throw new Error(
+      `Refusing to send a credential file: ${trimmed} (path contains "${blockedSegment}")`
+    )
+  }
+
+  const fileName = path.basename(trimmed).toLowerCase()
+  if (
+    BLOCKED_FILE_NAMES.has(fileName) ||
+    fileName.startsWith('.env.') ||
+    BLOCKED_PRIVATE_KEY_NAMES.has(fileName) ||
+    BLOCKED_EXTENSIONS.has(path.extname(fileName))
+  ) {
+    throw new Error(`Refusing to send a credential file: ${trimmed}`)
+  }
+}
+
 /** 从来源推断文件名（URL 取 pathname，本地取 basename），推断不出用 fallback */
 export function resolveSourceFileName(source: string, fallback: string): string {
   const value = source.trim()
@@ -106,6 +163,9 @@ async function readRemote(value: string): Promise<Buffer> {
 
 /** 本地读取：异步 stat + 异步 readFile，不阻塞主进程事件循环 */
 async function readLocal(value: string): Promise<Buffer> {
+  // 在 stat 之前就拒 —— 连「文件存不存在」都不该告诉一个想发凭据的调用方
+  assertOutboundSourceAllowed(value)
+
   let stat: fs.Stats
   try {
     stat = await fs.promises.stat(value)

@@ -22,6 +22,7 @@ import {
 } from '../../src/main/channels/channel-media'
 import {
   MAX_OUTBOUND_MEDIA_BYTES,
+  assertOutboundSourceAllowed,
   readBinarySource
 } from '../../src/main/channels/channel-media-source'
 import { inferVoiceEncodeType } from '../../src/main/channels/providers/weixin/weixin-outbound-media'
@@ -172,7 +173,52 @@ async function main(): Promise<void> {
   // ── 10. readBinarySource 的上界与异步读（S-355 D-6） ──
   await runSourceCases()
 
+  // ── 11. 凭据类路径黑名单（S-355 D-7） ──
+  runCredentialBlockCases()
+
   console.log('channel media regression passed')
+}
+
+// S-355 D-7：渠道会话免审批，`source` 是唯一还能挡的地方。这里钉住「要命的那几类必拒」，
+// 同时钉住「正常文件不被误伤」—— 后者更重要，误伤会让「发刚生成的图」这个主场景挂掉。
+function runCredentialBlockCases(): void {
+  const blocked = [
+    'C:\\Users\\gong\\.ssh\\id_rsa',
+    'C:\\Users\\gong\\.ssh\\id_ed25519',
+    '/home/gong/.aws/credentials',
+    '/home/gong/.gnupg/secring.gpg',
+    '/home/gong/.kube/config',
+    '/home/gong/project/.env',
+    '/home/gong/project/.env.production',
+    '/home/gong/.npmrc',
+    '/home/gong/.netrc',
+    '/home/gong/.pgpass',
+    '/home/gong/cert.pem',
+    '/home/gong/cert.p12',
+    '/home/gong/cert.pfx'
+  ]
+  for (const value of blocked) {
+    assert.throws(() => assertOutboundSourceAllowed(value), /Refusing to send a credential file/, value)
+  }
+
+  // 大小写 / 分隔符写法都算：Windows 路径不区分大小写，反斜杠正斜杠混用也常见
+  assert.throws(() => assertOutboundSourceAllowed('C:/Users/GONG/.SSH/id_rsa'), /credential file/)
+
+  const allowed = [
+    '/home/gong/project/report.pdf',
+    '/home/gong/Pictures/screenshot.png',
+    '/home/gong/.cache/render/out.png', // 点目录不等于凭据目录
+    '/home/gong/id_rsa.pub', // 公钥可以发
+    '/home/gong/.envrc', // 名字像但不是那个文件
+    '/home/gong/keys.yaml', // .key 太泛，不拦；.yaml 更不在名单里
+    'https://example.com/.env' // URL 指向远端，不涉及本机凭据
+  ]
+  for (const value of allowed) {
+    assert.doesNotThrow(() => assertOutboundSourceAllowed(value), value)
+  }
+
+  // 「空串」交由 readBinarySource 的空值检查回答，这里不管
+  assert.doesNotThrow(() => assertOutboundSourceAllowed('   '))
 }
 
 // S-355 D-6：`readBinarySource` 此前 URL 无超时无上限、本地 `readFileSync` 同步读。

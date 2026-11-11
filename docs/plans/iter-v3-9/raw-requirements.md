@@ -27,7 +27,7 @@
 |---|---|---|---|---|
 | [S-354](requirements/S-354.md) | 渠道出站媒体「宣称已交付」的四条没有真正生效 | **已实施，待真机验收**（`3922a827`，刀 9 代码侧已收口） | R-5 | D-1 `channel-media.ts` 曾是孤儿文件 → 现已接线（飞书 6 处 + 微信 6 处 `sendMediaOrText`）；D-2 新增 `SupportsOutboundMedia`（`AgentRuntimeChannelPluginExecutor.cs:150`）在 `AgentRunContextPolicy.IsChannelMediaToolAvailable` 注册期收窄，与执行期路由同源；D-3 `feishu-outbound-media.ts:71-79` 注释改成实话（不转格式、不强制后缀）；D-5 `tests/channel-media` 已挂 `npm test` |
 | [S-355](requirements/S-355.md) | 出站媒体来源读取无上限、无超时、同步读，且不做路径边界 | **D-6 已实施，待真机验收；D-7 待拍板** | R-5 × 内存线 | D-6 `channel-media-source.ts`：`MAX_OUTBOUND_MEDIA_BYTES = 30 MB` + 流式累加 + `AbortSignal.timeout(60s)` + `fs.promises` 异步读，7 条测试；D-7 渠道会话免审批（`ToolCallProcessor.Approval.cs:81-84`）+ `source` 零校验 ⇒ `.ssh/id_rsa` 可被当图片发群 |
-| [S-356](requirements/S-356.md) | 渠道工具参数与声明的一致性残留 | **待实施**（刀 11） | R-5（S-353 续） | D-4 `imagePath` → `filePath` 改名后 `TryGetProp` 只回落 `file_path`↔`filePath`，旧名两者都不命中；D-8 `FeishuMediaApi.downloadUrl` 零外部调用；D-9 `fileType` executor 仍写、handler 标 `@deprecated` 并忽略；D-10 渲染端 `plugin-tools.ts:414` 缺 `ChannelSendAudio`，与 descriptor / C# 三处不同步 |
+| [S-356](requirements/S-356.md) | 渠道工具参数与声明的一致性残留 | **已实施，待真机验收**（刀 11） | R-5（S-353 续） | D-4 `LegacyParamAliases` 旧名 `imagePath` → `filePath`（方向从规范名查旧名，新名优先）+ 9 条断言；D-8 删 `FeishuMediaApi.downloadUrl` 28 行与 `http` import；D-9 删**五处**不生效的 `fileType`（executor 写 ×2 / C# schema / 渲染端 schema / handler 泛型）；D-10 渲染端补 `ChannelSendAudio`，三处声明对齐 |
 | [S-357](requirements/S-357.md) | 引入 TS 侧 lint | **不占本迭代刀序** | 项目级 | D-11 `package.json` 里 eslint / prettier / biome **一个都没有**，根目录无 lint 配置。本轮 13 条里至少 3 条（D-1 孤儿文件 / D-8 零调用方法 / D-10 零调用导出）是 `no-unused-vars` 或「导出零引用」检查能自动抓的 |
 
 ### 〇·丙、追加（2026-11-11 10:35，1 条）

@@ -38,11 +38,6 @@ export function registerFeishuHandlers(): void {
     pluginId: string
     chatId: string
     filePath: string
-    /**
-     * @deprecated 从未有调用方传过。统一入口 `sendMedia` 按扩展名推飞书的
-     * `file_type`；需要精确控制请直接用 `service.api.media.uploadFile`。
-     */
-    fileType?: string
   }>('plugin:feishu:send-file', async (args) => {
     const service = activeChannelManager?.getService(args.pluginId) as
       | FeishuService

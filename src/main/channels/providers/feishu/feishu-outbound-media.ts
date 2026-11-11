@@ -6,6 +6,10 @@
  * 这里的逻辑是从 `channel-feishu-handlers.ts` 的两处调用点（IPC handler 与
  * `executeFeishuChannelTool`）收编上来的 —— 那两处各自把「读源 → 上传 → 发送」
  * 抄了一遍，是同一件事的两份实现。
+ *
+ * URL 下载统一走 `channel-media-source.readBinarySource`（带超时与 30 MB 上界）。
+ * 原 `FeishuMediaApi.downloadUrl` 是手写 `http` + 手动跟随 302 的第二套实现，
+ * 已删 —— 两份并存时谁改超时都会改错文件（S-356 D-8）。
  */
 
 import * as path from 'path'

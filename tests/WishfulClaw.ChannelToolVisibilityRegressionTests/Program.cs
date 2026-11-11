@@ -1,5 +1,6 @@
 using System.Text.Json;
 using WishfulClaw.Agent;
+using WishfulClaw.Agent.Executors;
 using WishfulClaw.Agent.Tools;
 using WishfulClaw.Agent.Tools.Providers;
 using WishfulClaw.Core.Tools;
@@ -116,6 +117,7 @@ internal static partial class Program
             AssertProjectsParentDefault();
 
             AssertChannelMediaToolsMatchCapability(registry);
+            AssertLegacyImagePathAlias();
 
             Console.WriteLine($"Channel tool visibility regression checks passed ({_checks} assertions).");
             return 0;
@@ -398,6 +400,37 @@ internal static partial class Program
     /// </summary>
     private static bool Allowed(AgentRunContext runContext, ToolRegistry registry, string name) =>
         AgentRunContextPolicy.IsToolAllowed(runContext, name, registry, channelSession: true);
+
+    // ── S-356 D-4: 改过名的入参，旧名仍要被认出来 ──
+
+    /// <summary>
+    /// <c>FeishuSendImage</c> / <c>WeixinSendImage</c> 的 schema 从 <c>imagePath</c> 改名
+    /// <c>filePath</c>（S-353），但 <c>TryGetProp</c> 的回落只有蛇形 ↔ 驼峰这一对，
+    /// <c>imagePath</c> 两个都不命中 ⇒ 读到空串 ⇒ 报「filePath 为空」，看着像模型没传参。
+    /// 别名表就为这一个旧名存在，所以这里同时钉住：旧名命中、新名优先、无关键不乱命中。
+    /// </summary>
+    private static void AssertLegacyImagePathAlias()
+    {
+        var legacy = Parse("""{"imagePath":"C:\\tmp\\a.png"}""");
+        Assert(AgentRuntimeChannelPluginExecutor.TryGetProp(legacy, "filePath", out var byCamel),
+            "旧名 imagePath 要能被 filePath 读到");
+        AssertEqual("C:\\tmp\\a.png", byCamel.GetString() ?? "(null)", "旧名的值原样保留");
+
+        Assert(AgentRuntimeChannelPluginExecutor.TryGetProp(legacy, "file_path", out var bySnake),
+            "路由按蛇形 file_path 读时同样命中旧名");
+        AssertEqual("C:\\tmp\\a.png", bySnake.GetString() ?? "(null)", "蛇形路径读到的也是旧名的值");
+
+        // 两个都在时新名优先 —— 别名是兼容垫片，不能盖掉规范名。
+        var both = Parse("""{"imagePath":"old.png","filePath":"new.png"}""");
+        Assert(AgentRuntimeChannelPluginExecutor.TryGetProp(both, "file_path", out var preferred),
+            "新旧名同时出现时仍能读到一个");
+        AssertEqual("new.png", preferred.GetString() ?? "(null)", "新名优先于旧名");
+
+        // 别名只认登记过的那一个，不做通用猜测。
+        var unrelated = Parse("""{"other":"x"}""");
+        Assert(!AgentRuntimeChannelPluginExecutor.TryGetProp(unrelated, "filePath", out _),
+            "无关键不会被别名表误命中");
+    }
 
     private static HashSet<string> ToolNames(IReadOnlyList<ToolDefinition> definitions) =>
         definitions.Select(definition => definition.Name).ToHashSet(StringComparer.Ordinal);

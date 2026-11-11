@@ -79,7 +79,7 @@ public static class AgentRuntimeChannelPluginExecutor
         return call.Name switch
         {
             "FeishuSendImage" => ("plugin:feishu:send-image", w => { w.WriteString("chatId", R(call, "chat_id")); w.WriteString("filePath", R(call, "file_path")); }),
-            "FeishuSendFile" => ("plugin:feishu:send-file", w => { w.WriteString("chatId", R(call, "chat_id")); w.WriteString("filePath", R(call, "file_path")); WOpt(w, call, "file_type", "file_type"); }),
+            "FeishuSendFile" => ("plugin:feishu:send-file", w => { w.WriteString("chatId", R(call, "chat_id")); w.WriteString("filePath", R(call, "file_path")); }),
             "WeixinSendImage" => ("plugin:weixin:send-image", w => { w.WriteString("chatId", R(call, "chat_id")); w.WriteString("filePath", R(call, "file_path")); WOpt(w, call, "content", "content"); }),
             "WeixinSendFile" => ("plugin:weixin:send-file", w => { w.WriteString("chatId", R(call, "chat_id")); w.WriteString("filePath", R(call, "file_path")); WOpt(w, call, "content", "content"); }),
             "WeixinSendAudio" => ("plugin:weixin:send-audio", w => { w.WriteString("chatId", R(call, "chat_id")); w.WriteString("filePath", R(call, "file_path")); WOpt(w, call, "content", "content"); WOptI(w, call, "durationMs", "durationMs"); }),
@@ -161,7 +161,6 @@ public static class AgentRuntimeChannelPluginExecutor
             w.WriteString("chatId", JsonHelpers.GetString(parameters, "externalChatId") ??
                 JsonHelpers.GetString(parameters, "pluginChatId") ?? string.Empty);
             w.WriteString("filePath", R(call, "filePath"));
-            WOpt(w, call, "fileType", "fileType");
             if (kind == "audio") WOptI(w, call, "durationMs", "durationMs");
         });
     }
@@ -191,17 +190,46 @@ public static class AgentRuntimeChannelPluginExecutor
     /// schema 传了也白传，报错还像是模型没传（S-353）。这里把回落做成唯一入口，下面那些 helper 一律走它，
     /// 两套命名从此互通。
     /// </remarks>
-    private static bool TryGetProp(JsonElement input, string name, out JsonElement value)
+    internal static bool TryGetProp(JsonElement input, string name, out JsonElement value)
     {
         if (input.ValueKind == JsonValueKind.Object)
         {
             if (input.TryGetProperty(name, out value)) return true;
             var alternate = name.Contains('_', StringComparison.Ordinal) ? ToCamelCase(name) : ToSnakeCase(name);
             if (input.TryGetProperty(alternate, out value)) return true;
+
+            // 改过名的入参：旧名仍在旧 prompt / 旧插件里（S-356 D-4）。不认的话读到空串，
+            // 报的却是「新名没传」，把排错方向直接带偏 —— 与 S-353 同一个病的另一面。
+            if (TryGetLegacy(input, name, out value)) return true;
+            if (TryGetLegacy(input, alternate, out value)) return true;
         }
         value = default;
         return false;
     }
+
+    /// <summary>
+    /// 按**规范名**查它改名前叫什么，命中的旧名照样读。
+    ///
+    /// 方向是从新到旧：路由代码一律按新名读（<c>filePath</c>），要救的是输入里写成旧名
+    /// （<c>imagePath</c>）的调用。只登记**实际改过名**的那几个，不做通用猜测。
+    /// </summary>
+    private static bool TryGetLegacy(JsonElement input, string name, out JsonElement value)
+    {
+        if (LegacyParamAliases.TryGetValue(name, out var formerNames))
+        {
+            foreach (var formerName in formerNames)
+            {
+                if (input.TryGetProperty(formerName, out value)) return true;
+            }
+        }
+        value = default;
+        return false;
+    }
+
+    private static readonly Dictionary<string, string[]> LegacyParamAliases = new(StringComparer.Ordinal)
+    {
+        ["filePath"] = ["imagePath", "image_path"],
+    };
 
     private static string R(AgentRuntimeNativeToolCall call, string name) =>
         (TryGetProp(call.Input, name, out var raw) ? JsonHelpers.AsString(raw) : null)?.Trim() ?? string.Empty;

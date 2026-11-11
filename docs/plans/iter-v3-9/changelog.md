@@ -185,3 +185,9 @@
   - 顺带补两处可读错误：`Not a file:`（传目录，此前是 EISDIR）、`empty body`（此前静默 0 字节）。
   - **测试**：`tests/channel-media` 新增 `runSourceCases()` 7 条，含本地起 `http` 服务实测「声明值超限」与「chunked 流式超限」。超时不进套件（跑一次 60s），走 S-355 §8 手工验收。
   - **D-7 仍未拍板**（`source` 路径边界 A/B/C），本刀不动 —— 见 plan.md §三 第 3 条。微信侧 `encryptOutboundMedia` 的二次复制也没动：加上界后峰值从「无界」变「≤3×30MB」，可控。
+- **刀 11 / S-356** ⇒ 一致性残局四项收口。
+  - **D-4 别名方向差点写反**：第一版写成 `["imagePath"] = "filePath"`（旧名 → 新名），但代码是按 `filePath` 去读输入的 —— 该查的是「`filePath` 以前叫什么」。改成 `["filePath"] = ["imagePath","image_path"]` 后测试才真能命中。**别名表的方向由「读的那一侧」决定，不是由改名史决定。**
+  - **D-9 是五处不是两处**：executor 写 ×2（`file_type` / `fileType`）+ C# schema 声明 + 渲染端 schema 声明 + handler 泛型 `fileType?`。只删写侧不删声明侧，模型照 schema 传照样白传 —— 与 S-353「传了读不到」是同一个病的两个方向。
+  - **D-8**：删 `FeishuMediaApi.downloadUrl` 28 行，顺带删因此空掉的 `http` import；`feishu-outbound-media.ts` 头部注明「下载统一走 `readBinarySource`」。
+  - **D-10 选补齐不选拆**：整条渲染端工具线（`plugin-tools.ts` 475 行）零 import 属实，但删它是方向性决定，单独立项；本刀补 `channelSendAudio` 一行，三处对齐即可。**待办另记**：那批导出要么接线要么清掉。
+  - **门禁**：typecheck 三配置 0 错；`npm test` 131/131；`ChannelToolVisibility` **200 assertions**（新增 9 条别名断言）。

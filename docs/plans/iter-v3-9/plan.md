@@ -60,7 +60,7 @@
 |---|---|---|---|
 | **9** | [S-354](requirements/S-354.md) | 四条「宣称已交付」的补真：D-1 降级链路真接线 / D-2 六家渠道注册期收窄 `ChannelSendAudio` 可见性 / D-3 飞书 opus 注释与代码对齐 / D-5 补 `inferVoiceEncodeType` 等单测 | ✅ **已实施（`3922a827`）**，代码侧四条均核实；待真机 T-1 ~ T-3 |
 | **10** | [S-355](requirements/S-355.md) | 出站媒体读源加固：D-6 `maxBytes` + `AbortSignal.timeout` + `fs.promises` 替同步读（**与内存线同源**）；D-7 路径边界 —— **需拍板**，见 §三 | **D-6 ✅ 已实施（`30 MB` 上界 / 60 s 超时 / 异步读 + 7 条测试）**；**D-7 ⏳ 待拍板** |
-| **11** | [S-356](requirements/S-356.md) | 一致性残局：D-4 `imagePath` 旧名别名 / D-8 删死代码 `downloadUrl` / D-9 `fileType` 二选一 / D-10 渲染端三处声明同步 | **待实施** |
+| **11** | [S-356](requirements/S-356.md) | 一致性残局：D-4 `imagePath` 旧名别名 / D-8 删死代码 `downloadUrl` / D-9 `fileType` 二选一 / D-10 渲染端三处声明同步 | ✅ **已实施**（D-4 别名表 / D-8 删 28 行 / D-9 删 5 处 / D-10 补齐），待真机 |
 | **12** | [S-357](requirements/S-357.md) | 引入 TS 侧 lint（`no-unused-vars` / `no-floating-promises` / `eqeqeq` 最小集，先出基线不清零） | **不占本迭代刀序**，单独立项 |
 
 **排序依据**：刀 9 最前 —— D-1 是「文档说交付了、代码没生效」，不补的话下一个迭代会照假结论排刀，与 11-09 那次「S-247 关了但清单还列着」是同一个病的两个方向。刀 10 排在 11 之前，因为 D-6 与「卡炸 / 内存暴涨」同源，是 P1 不是清理项。刀 12 是工程基建，**不占本迭代刀序**，理由见 [S-357](requirements/S-357.md)。

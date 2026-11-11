@@ -1,5 +1,4 @@
 import * as https from 'https'
-import * as http from 'http'
 import { request, BASE_URL } from './feishu-http'
 import type { AuthHeadersProvider } from './feishu-bitable-api'
 
@@ -287,33 +286,5 @@ export class FeishuMediaApi {
       throw new Error(`Feishu sendUrgent failed: ${data.msg}`)
     }
     return true
-  }
-
-  /** Download a file from an HTTP/HTTPS URL and return the raw buffer */
-  static downloadUrl(url: string): Promise<Buffer> {
-    return new Promise((resolve, reject) => {
-      const mod = url.startsWith('https') ? https : http
-      mod
-        .get(url, (res) => {
-          if (
-            res.statusCode &&
-            res.statusCode >= 300 &&
-            res.statusCode < 400 &&
-            res.headers.location
-          ) {
-            FeishuMediaApi.downloadUrl(res.headers.location).then(resolve).catch(reject)
-            return
-          }
-          if (res.statusCode !== 200) {
-            reject(new Error(`Download URL failed: HTTP ${res.statusCode}`))
-            return
-          }
-          const chunks: Buffer[] = []
-          res.on('data', (chunk: Buffer) => chunks.push(chunk))
-          res.on('end', () => resolve(Buffer.concat(chunks)))
-          res.on('error', reject)
-        })
-        .on('error', reject)
-    })
   }
 }

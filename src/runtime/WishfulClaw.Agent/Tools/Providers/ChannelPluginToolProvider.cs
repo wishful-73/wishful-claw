@@ -27,7 +27,7 @@ public sealed class ChannelPluginToolProvider : IToolProvider
         registry.Register(new ToolDefinitionPlaceholder(
             "ChannelSendFile",
             "Send a file to the current channel conversation. The channel is inferred from the current session.",
-            ToolSchemaBuilder.Object(new() { ["filePath"] = ToolSchemaBuilder.String("Local path to the file."), ["fileType"] = ToolSchemaBuilder.String("Optional file type.") }, ["filePath"]),
+            ToolSchemaBuilder.Object(new() { ["filePath"] = ToolSchemaBuilder.String("Local path to the file.") }, ["filePath"]),
             availableModes: ["normal", "goal", "global", "channel"],
             visibleScopes: ToolVisibilityScopes.ChannelOnly));
 

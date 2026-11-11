@@ -26,13 +26,31 @@ const channelSendFile: ToolHandler = {
     inputSchema: {
       type: 'object',
       properties: {
-        file_path: { type: 'string', description: 'Absolute local file path or HTTP/HTTPS URL' },
-        file_type: { type: 'string', description: 'Optional file type override' }
+        file_path: { type: 'string', description: 'Absolute local file path or HTTP/HTTPS URL' }
       },
       required: ['file_path']
     }
   },
   execute: async () => nativeOnlyPluginResult('ChannelSendFile'),
+  requiresApproval: (_input, ctx) => !ctx.channelSession
+}
+
+// S-356 D-10：`channel-descriptors.ts` 与 C# 的 `ChannelPluginToolProvider` 都有它，
+// 只有这张渲染端 handler 表漏了 —— 三处声明同一件事，缺一处就继续漂移。
+const channelSendAudio: ToolHandler = {
+  definition: {
+    name: 'ChannelSendAudio',
+    description: 'Send a voice message to the current channel conversation. The channel and chat are inferred from the current session.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        file_path: { type: 'string', description: 'Absolute local file path or HTTP/HTTPS URL' },
+        duration_ms: { type: 'number', description: 'Duration in milliseconds, used by channels that need it' }
+      },
+      required: ['file_path']
+    }
+  },
+  execute: async () => nativeOnlyPluginResult('ChannelSendAudio'),
   requiresApproval: (_input, ctx) => !ctx.channelSession
 }
 
@@ -93,12 +111,6 @@ const feishuSendFile: ToolHandler = {
         file_path: {
           type: 'string',
           description: 'Absolute local file path OR an HTTP/HTTPS URL pointing to the file'
-        },
-        file_type: {
-          type: 'string',
-          description:
-            'Override file type: opus, mp4, pdf, doc, xls, ppt, or stream. Omit to auto-detect from extension.',
-          enum: ['opus', 'mp4', 'pdf', 'doc', 'xls', 'ppt', 'stream']
         }
       },
       required: ['plugin_id', 'chat_id', 'file_path']
@@ -411,7 +423,11 @@ const FEISHU_TOOLS: ToolHandler[] = [
 ]
 
 const WEIXIN_TOOLS: ToolHandler[] = [weixinSendImage, weixinSendFile, weixinSendAudio]
-const COMMON_PLUGIN_TOOL_HANDLERS: ToolHandler[] = [channelSendImage, channelSendFile]
+const COMMON_PLUGIN_TOOL_HANDLERS: ToolHandler[] = [
+  channelSendImage,
+  channelSendFile,
+  channelSendAudio
+]
 const COMMON_PLUGIN_TOOL_NAMES = [
   ...COMMON_PLUGIN_TOOL_HANDLERS,
   pluginSendMessage,

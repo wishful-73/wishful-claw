@@ -9,6 +9,7 @@
 > **2026-10-22 追加（R-3 转正）**：10-22 08:49 老大定「第一版本先处理反代，这是一种节约手段」，08:50 定**形态 A**（provider 层内实现，不起本地服务），09:12 定风险口径「这个可以提醒风险呀」，**09:14 定「v1.0.1 带 WorkBuddy」**；同日勘察完成 —— **WorkBuddy 拆入 `v3-iter-1`，登记为 `S-218`**，并补入唯一一份上游源码参考 **`astragate-community/astra-gate-plugins`**（见下方同名小节）。**R-1 / R-2 / H-1 仍未勘察到底、未开工；R-3 的 Qoder 部分仍登记。**
 > **2026-10-27 追加（R-4 新增 / R-1 口径升级）**：13:49 老大定「能听**不属于我们这个项目**，走通用插件的形式，加载进来使用」；13:57 划分两类插件（Type A 给 agent、**Type B 带 UI 且 UI 由插件自带**）；14:00 定「**先只做 window**」「插件**不做白名单，能开放的越多越好**」「安装是用户自己点的，**要确认**」⇒ 新增 **`R-4` 插件体系**，**`R-1` 听改为 Type B 插件实现**（不在主程序内置）。见下方「R-4」与修订后的 R-1 小节。
 > **2026-11-09 追加（R-3 关闭 / R-1·R-4 交账 / 归属原则钉死）**：10:36 老大定「**R-3直接标关闭**」。同日核对：**R-4 基座 8 条已全部落地**（S-240~S-244，v3-iter-4 五刀），**R-1 本仓应交付的部分（录音采集）已完成**，转写插件本体属另一个项目。最重要的是老大钉死了归属原则 ——「**本仓主要是负责做插件底座。不负责具体功能实现**」：具体功能（转写 / 合成 / 说话人分离 / 会议 UI）一律不进本仓，本仓只做 **manifest 加载、导轨入口、独立窗口、资产下载器、生命周期、卸载清理、安装确认、以及通道能力（录音采集 / 出站媒体）**。
+> **2026-11-11 追加（R-5 交账）**：R-5 出站媒体通道随 v3-iter-9（目标 1.0.9）**实施完毕** —— 统一 `sendMedia` + `supportedMediaKinds`，飞书 / 微信已接入图片 / 文件 / 语音，其余六家无凭证留空、由降级链路退避发文字。**⇒ R-1 入站 / R-2 出站两颗在本仓的通道都已补齐，R 系只剩插件本体在别的项目（`D:\claw\QwenAsr` 未建、`D:\claw\kittentts-rs` 已有引擎）。** R-2 现在**只剩「合成」属插件**；R-4 未决项（`views[].mode` 只有 `'window'`、`AppPluginId` 硬编码）不变。
 
 ---
 
@@ -17,11 +18,11 @@
 | 编号 | 方向 | 一句话 | 现成基础 | 状态 |
 |---|---|---|---|---|
 | **R-1** | **听** | 语音转文字：电脑做会议记录 / 纪要 | 老大仓库 **`wishful-73/QwenASR`**（Windows exe ~2.3 MB；模型 0.6B ≈ 490 MB）+ **说话人区分 `sherpa-onnx`**（本地源码 `D:\claw\sherpa-onnx`） | **本仓部分已完成**：录音采集三件套（`plugin-audio.ts` / `plugin-audio-wav.ts` / `plugin-audio-handlers.ts`）随 R-4 交付；转写插件本体属**另一个项目**（该仓尚未建） |
-| **R-2** | **说** | 渠道发消息时，用户不方便看文字就直接听语音 | **`kittentts-rs`**（`D:\claw\kittentts-rs`：KittenTTS 的 Rust 移植，v0.4.1 / Apache-2.0 / CPU-only ONNX / 纯 Rust / `src/bin/server.rs` 带 OpenAI 兼容 TTS server）；本机朗读 **S-138 已实施** | 登记 —— **合成属插件、不在本仓**；本仓需补的是通道（见 R-5） |
+| **R-2** | **说** | 渠道发消息时，用户不方便看文字就直接听语音 | **`kittentts-rs`**（`D:\claw\kittentts-rs`：KittenTTS 的 Rust 移植，v0.4.1 / Apache-2.0 / CPU-only ONNX / 纯 Rust / `src/bin/server.rs` 带 OpenAI 兼容 TTS server）；本机朗读 **S-138 已实施** | 只剩「合成」属插件、不在本仓；**通道那一格已由 R-5 补完（2026-11-11）** |
 | **R-3** | **反代** | 客户端不好用但模型可用 ⇒ 自建反代转成 OpenAI 兼容 | ~~Qoder 主参考~~ / ~~Astra-Gate~~ / ~~astra-gate-plugins~~（勘察结论全部保留备查） | **❌ 已关闭（2026-11-09 10:36）** —— WorkBuddy 被 S-318 摘掉、Qoder 由 S-230 关闭；契约缺是「做不了」，合规裁定是「不该做」 |
 | **H-1** | **方法论**（非功能） | Harness 工程：**agent 的工作系统**该怎么设计才可靠 | `walkinglabs/learn-harness-engineering`（**⭐19.9k / 2.2k fork**，MIT，14 讲 + 项目 + 8 个开箱模板 + 前沿 harness 拆解） | 登记 |
 | **R-4** | **插件体系** | 两类插件：**Type A 给 agent 用（tools / MCP）**、**Type B 给用户用（自带 UI · 独立窗口）**；资产（exe / 模型）按需下载 | 已有「自定义扩展」骨架（`src/shared/extension-types.ts`）+ MCP 子进程通道（`src/main/mcp/mcp-client.ts`） | **基座 8 条已全部交付**（S-240~S-244，v3-iter-4 五刀）；`views[].mode:'panel'` 与内置插件 manifest 化仍属未决 |
-| **R-5** | **出站媒体通道** | 渠道把图片 / 文件 / **语音**发出去 —— 与 R-1 的录音采集对称（一个入站收音频、一个出站发音频） | 飞书已有 `sendImageMessage` / `sendFileMessage`；微信有通用 `sendItems`（iLink `item_list`）；**钉钉 / Discord / QQ / Telegram / 企业微信只有纯文本 `sendMessage(chatId, content)`** | **登记 → v3-iter-9 · S-352**（2026-11-09） |
+| **R-5** | **出站媒体通道** | 渠道把图片 / 文件 / **语音**发出去 —— 与 R-1 的录音采集对称（一个入站收音频、一个出站发音频） | 飞书已有 `sendImageMessage` / `sendFileMessage`；微信有通用 `sendItems`（iLink `item_list`）；**钉钉 / Discord / QQ / Telegram / 企业微信只有纯文本 `sendMessage(chatId, content)`** | **✅ 已实施（v3-iter-9 · S-352）** —— 统一接口 `sendMedia` + `supportedMediaKinds`，飞书 / 微信已接入并发语音；其余六家无凭证，留空即退避发文字 |
 
 ---
 
@@ -511,7 +512,7 @@ Local State 的 os_crypt.encrypted_key（base64，去前 5 字节 "DPAPI"）
 
 > **登记来源**：老大 2026-11-09 10:33「**本仓主要是负责做插件底座。不负责具体功能实现**」→ 10:36「其他缺口，进行新迭代下的需求登记」。
 > **需求单**：[`plans/iter-v3-9/requirements/S-352.md`](plans/iter-v3-9/requirements/S-352.md)
-> **状态**：登记，未开工 · 目标 v3-iter-9。
+> **状态**：**✅ 已实施（2026-11-11，v3-iter-9）** —— 刀 0 八家实读 → 刀 1/2/3 接口与飞书 / 微信 / 语音 → 刀 9 降级真接线（`3922a827`）。读源加固（30 MB 上界 / 60 s 超时 / 凭据路径黑名单）见 S-355。**待真机验收**。下面「七家现状」「开工前置」两节保留为**设计当时的快照**，实际落地结论见 §落地结果。
 
 ### 为什么单独立这一条
 
@@ -543,6 +544,8 @@ replyMessage(messageId: string, content: string): Promise<{ messageId: string }>
 |---|---|---|
 | 飞书 | ⚠️ 有，但**绕过统一接口** | `feishu-media-api.ts:199 sendImageMessage` / `:220 sendFileMessage`；调用方走 `channel-feishu-handlers.ts:39/79/352/363` 的 `service.api.media.*` 私有路径 |
 | 微信 | ⚠️ 协议层可能有，未验证 | `weixin-api.ts:209 sendItems(items: Array<Record<string, unknown>>)`，iLink `item_list`；开放式结构能塞任意 item，但**没有任何代码构造过语音 item** |
+
+> ⚠️ **上面这行是 11-09 的登记快照，已被实施推翻**：微信 `sendImage` / `sendFile` **本来就有**（`weixin-service.ts:159/168`，登记时判「未验证」是错的），语音 `voice_item` 于刀 3 按官方 iLink SDK 重写（`media_type` 2→**4**、删 `voice_len`、加 `encode_type` / `sample_rate` / `bits_per_sample` / `playtime`）。实际结论见下方 §落地结果。
 | 钉钉 | ❌ 纯文本 | `dingtalk-service.ts:273` |
 | Discord | ❌ 纯文本 | `discord-service.ts:36` |
 | QQ | ❌ 纯文本 | `qq-service.ts:100` |
@@ -556,11 +559,24 @@ replyMessage(messageId: string, content: string): Promise<{ messageId: string }>
 | 方向 | 能力 | 状态 |
 |---|---|---|
 | 入站 | 收音频（录音采集三件套：loopback 系统内录 + 16k 单声道 wav 分段落盘） | ✅ 已交付（S-243 `0869d144`） |
-| **出站** | **发音频 / 图片 / 文件到渠道** | **❌ 这一条（S-352）** |
+| **出站** | **发音频 / 图片 / 文件到渠道** | **✅ 已交付（S-352，`14837e16` / `405bc9df` / `fd97143e` / `3922a827`）** —— 待真机验收 |
+
+### 落地结果（2026-11-11）
+
+| 项 | 结论 |
+|---|---|
+| 接口形态 | `sendMedia(chatId, { kind: 'image' \| 'file' \| 'audio', path, mimeType?, durationMs? })` + `supportedMediaKinds: readonly MediaKind[]` 只读声明（`channel-types.ts`） |
+| 降级 | `sendMedia` 前查 `supportedMediaKinds`，不含目标 kind 直接走 `sendMessage(text)` —— **不抛错、不静默丢弃、不弹窗**。飞书 6 处 + 微信 6 处调用点已改走 `sendMediaOrText(...)`，测试覆盖两条分支 |
+| 已接入 | **飞书**（图片 / 文件 / 语音）、**微信**（图片 / 文件 / 语音 `voice_item`） |
+| 未接入 | 钉钉 / Discord / QQ / Telegram / 企业微信 —— **无凭证，`supportedMediaKinds` 留空即正确结论**，降级链路兜底 |
+| 读源护栏 | 30 MB 硬上界（本地 stat 先判 + 读完再判；URL 先判 `content-length` 再流式累加）+ 60 s `AbortSignal.timeout` + 全异步（S-355 D-6） |
+| 路径边界 | 凭据类黑名单（`.ssh` / `.aws` / `.env*` / 私钥 / `.pem` 等），**不做目录白名单**（S-355 D-7，A+C 裁定）；其余任意文件仍可被发出，属**已登记的已知风险**（S-352 §9） |
 
 ### 开工前置（写死）
 
 **七家的媒体发送能力逐家实机验证，没验完不写接口。** 猜着设计出来的抽象会被某一家的限制推翻。尤其要确认「钉钉 / 企业微信机器人到底能不能发语音」—— 如果确认不能，`supportedMediaKinds` 为空**是正确结论，不是失败**，能力声明本来就要能表达「不支持」。
+
+> ✅ **这条前置已执行（2026-11-09 刀 0）**：八家逐家实读（比原计划多出 WhatsApp）。**有凭证的只有飞书 + 微信**，其余六家按无凭证处理 ⇒ `supportedMediaKinds` 留空，降级发文字。钉钉 / 企业微信能不能发语音**未能验证**（无凭证），故按「不支持」落地 —— 这与前置里「确认不能则留空」同一条结论，只是**理由是「未验证」而非「确认不能」**，已在 S-352 §5.1 记明。
 
 ### 刻意不划进本条的
 

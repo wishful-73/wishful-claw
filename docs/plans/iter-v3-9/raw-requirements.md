@@ -29,6 +29,14 @@
 | [S-356](requirements/S-356.md) | 渠道工具参数与声明的一致性残留 | **待实施**（刀 11） | R-5（S-353 续） | D-4 `imagePath` → `filePath` 改名后 `TryGetProp` 只回落 `file_path`↔`filePath`，旧名两者都不命中；D-8 `FeishuMediaApi.downloadUrl` 零外部调用；D-9 `fileType` executor 仍写、handler 标 `@deprecated` 并忽略；D-10 渲染端 `plugin-tools.ts:414` 缺 `ChannelSendAudio`，与 descriptor / C# 三处不同步 |
 | [S-357](requirements/S-357.md) | 引入 TS 侧 lint | **不占本迭代刀序** | 项目级 | D-11 `package.json` 里 eslint / prettier / biome **一个都没有**，根目录无 lint 配置。本轮 13 条里至少 3 条（D-1 孤儿文件 / D-8 零调用方法 / D-10 零调用导出）是 `no-unused-vars` 或「导出零引用」检查能自动抓的 |
 
+### 〇·丙、追加（2026-11-11 10:35，1 条）
+
+> 老大直接提，不来自 dev 审查，**不属渠道媒体线**。刀序见 [plan.md](plan.md) §二·丙。
+
+| 编号 | 标题 | 状态 | 上位 | 依据 |
+|---|---|---|---|---|
+| [S-358](requirements/S-358.md) | token 数量单位 `G` → `B` —— 按 AI 行业通用量级口径显示 | **✅ 已实施（2026-11-11 10:4x）** | 项目级（UI 显示口径） | `format-tokens.ts:17-22` 的 `TOKEN_UNITS` 按 **SI 前缀**选了 `G`（Giga），而 AI 行业描述参数 / token 用量通行 **`B`（Billion）**；`G` 在中文语境会被读成 GB。**这是口径变更不是缺陷** —— `G` 是 S-194 登记时的原始口径（老大原话「我在考虑增加 G 这些单位」）。改动 = 一个字面量 + 3 处注释 + 4 处断言（`tests/token-format/program.ts:46/55/56/71`）+ 1 条防回退断言，26 个调用点与 C# 侧零改动。门禁：typecheck 三配置 0 错 / `npm test` 131/131 |
+
 ## 一、挂账与阻塞继承（6 条，不占刀序）
 > 前 5 条从 [../iter-v3-8/raw-requirements.md](../iter-v3-8/raw-requirements.md) §二 原样继承，**没有一条在本迭代变得可做**。状态行不改，只换挂靠的迭代文档。
 

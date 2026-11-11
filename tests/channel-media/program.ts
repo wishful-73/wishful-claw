@@ -10,11 +10,20 @@
 //      退避发文字」—— 不钉住，下次又会被写成 `throw`（D-1 就是这么丢的）。
 
 import assert from 'node:assert/strict'
+import * as fs from 'node:fs'
+import * as http from 'node:http'
+import type { AddressInfo } from 'node:net'
+import * as os from 'node:os'
+import * as path from 'node:path'
 import {
   buildMediaFallbackText,
   sendMediaOrText,
   supportsMediaKind
 } from '../../src/main/channels/channel-media'
+import {
+  MAX_OUTBOUND_MEDIA_BYTES,
+  readBinarySource
+} from '../../src/main/channels/channel-media-source'
 import { inferVoiceEncodeType } from '../../src/main/channels/providers/weixin/weixin-outbound-media'
 import { WeixinVoiceEncodeType } from '../../src/main/channels/providers/weixin/weixin-types'
 import type {
@@ -160,7 +169,88 @@ async function main(): Promise<void> {
     assert.deepEqual(calls, ['text:chat-4:降级'])
   }
 
+  // ── 10. readBinarySource 的上界与异步读（S-355 D-6） ──
+  await runSourceCases()
+
   console.log('channel media regression passed')
+}
+
+// S-355 D-6：`readBinarySource` 此前 URL 无超时无上限、本地 `readFileSync` 同步读。
+// 这里钉住「超限必拒、正常必过」；超时（60s）不在此测，跑一次要一分钟，验收走 S-355 §8。
+async function runSourceCases(): Promise<void> {
+  const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'wc-media-'))
+
+  try {
+    // ── 10.1 空来源 / 不存在 / 不是文件 ──
+    await assert.rejects(() => readBinarySource('   ', 'f.bin'), /File path is empty/)
+    await assert.rejects(
+      () => readBinarySource(path.join(dir, 'missing.png'), 'f.png'),
+      /File not found/
+    )
+    await assert.rejects(() => readBinarySource(dir, 'x.bin'), /Not a file/)
+
+    // ── 10.2 正常文件读通，文件名按 basename 推断 ──
+    const small = path.join(dir, 'tiny.png')
+    await fs.promises.writeFile(small, Buffer.from('hello'))
+    const ok = await readBinarySource(small, 'fallback.png')
+    assert.equal(ok.buffer.toString(), 'hello')
+    assert.equal(ok.fileName, 'tiny.png', '本地来源的 fileName 取 basename')
+
+    // ── 10.3 超上限的本地文件被拒，且错误里写清实际大小与上限 ──
+    const big = path.join(dir, 'big.bin')
+    await fs.promises.writeFile(big, Buffer.alloc(MAX_OUTBOUND_MEDIA_BYTES + 1))
+    await assert.rejects(
+      () => readBinarySource(big, 'big.bin'),
+      /Outbound media too large: file is 31457281 bytes, limit is 31457280 bytes \(30\.0 MB\)/
+    )
+
+    // ── 10.4 URL 分支：声明值超限，读 body 之前就拒 ──
+    const server = http.createServer((req, res) => {
+      if (req.url === '/small') {
+        res.writeHead(200, { 'content-type': 'image/png' })
+        res.end(Buffer.from('hello'))
+        return
+      }
+      if (req.url === '/declared-big') {
+        // 只声明、不真发那么多：验证「先看 content-length」
+        res.writeHead(200, { 'content-length': String(MAX_OUTBOUND_MEDIA_BYTES + 1) })
+        res.end()
+        return
+      }
+      if (req.url === '/lying-big') {
+        // 不声明 content-length（chunked），实发超限：验证「边读边累加」
+        res.writeHead(200, { 'content-type': 'application/octet-stream' })
+        res.end(Buffer.alloc(MAX_OUTBOUND_MEDIA_BYTES + 64 * 1024))
+        return
+      }
+      res.writeHead(404)
+      res.end()
+    })
+    // 客户端超限后主动断开，服务端会收到 EPIPE —— 不是测试失败
+    server.on('clientError', () => undefined)
+
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const port = (server.address() as AddressInfo).port
+
+    try {
+      const okUrl = await readBinarySource(`http://127.0.0.1:${port}/small`, 'fallback.png')
+      assert.equal(okUrl.buffer.toString(), 'hello')
+      assert.equal(okUrl.fileName, 'small', 'URL 来源的 fileName 取 pathname')
+
+      await assert.rejects(
+        () => readBinarySource(`http://127.0.0.1:${port}/declared-big`, 'x.bin'),
+        /Outbound media too large: remote media/
+      )
+      await assert.rejects(
+        () => readBinarySource(`http://127.0.0.1:${port}/lying-big`, 'x.bin'),
+        /Outbound media too large: remote media/
+      )
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+    }
+  } finally {
+    await fs.promises.rm(dir, { recursive: true, force: true })
+  }
 }
 
 main().catch((err) => {

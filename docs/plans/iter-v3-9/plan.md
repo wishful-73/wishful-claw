@@ -37,8 +37,8 @@
 | **1** | S-352 阶段二 | 接口加 `supportedMediaKinds` + `sendMedia?`（均可选），**只让飞书实现** —— 把已有的 `sendImageMessage`/`sendFileMessage` 收编进统一接口 | ✅ 已完成（typecheck 0 错 / 测试 130/130）。~~降级链路一并落地~~ —— **未落地，见刀 9** |
 | **2** | S-352 阶段三之微信 | `weixin-service.ts` 的 `sendImage` / `sendFile` 收进 `sendMedia`，去掉 `channel-weixin-handlers.ts` 两处重复实现 | ✅ 已完成（同上门禁） |
 | **3** | S-352 阶段四之 audio | 微信 `voice_item` 按官方 iLink SDK 重写（原推断三处全错：`media_type` 2→**4**、删 `voice_len`、加 `encode_type`/`sample_rate`/`bits_per_sample`/`playtime`）；飞书 `msg_type: 'audio'`；三家 `send-audio` 工具入口全链路 | ✅ 已完成（见单内 §6.3） |
-| **4~8** | S-352 阶段三之其余六家 | 钉钉 / Discord / QQ / Telegram / 企业微信 / WhatsApp | **不做** —— 无凭证，`supportedMediaKinds` 留空。⚠️ 原写「留空自动降级」，但降级链路**至今未接线**（见刀 9），当前实际行为是 `throw` |
-| ~~8~~ | 降级链路 | `supportsMediaKind()` 不含目标 kind 就退回 `sendMessage` | ❌ **撤回「已交付」** —— 代码存在（`channels/channel-media.ts`）但**全仓零 import**，handler 全是直连 `service.sendMedia(...)`，媒体不支持时走 `throw` 而非退文本。真接线见 **刀 9** |
+| **4~8** | S-352 阶段三之其余六家 | 钉钉 / Discord / QQ / Telegram / 企业微信 / WhatsApp | **不做** —— 无凭证，`supportedMediaKinds` 留空。降级行为已由刀 9（`3922a827`）真接线，留空即「退避发文字」 |
+| ~~8~~ | 降级链路 | `supportsMediaKind()` 不含目标 kind 就退回 `sendMessage` | ✅ **已补真（刀 9 / `3922a827`）** —— 原为孤儿文件（全仓零 import），现飞书 6 处 + 微信 6 处调用点改走 `sendMediaOrText(...)`，测试 `tests/channel-media` 覆盖两条分支 |
 | **收尾** | [S-353](requirements/S-353.md) | **同线发现的既有缺陷**：schema 用驼峰、executor 按蛇形精确读 ⇒ 7 处参数静默丢失（`imagePath` / `userIds` / `atAll` / `recordIds` / `pageSize` / `durationMs`）。治根是 `TryGetProp` 双向归一，一刀把同源的四处一起收（含 `BitableMut` 那个 `if…else…;` 无条件尾巴） | ✅ 已实施（`ab2b2dbe`），待真机验收 |
 
 **刀 1 必须排在逐家接入之前**，理由跟 v3-iter-8 把 S-324（判据不变）排最前一样：**先建立「接口改了、行为没变」的信心**。飞书那两个方法本来就能用，只是位置不对；把它们搬到统一接口上，跑一遍确认发图发文件照旧，再动其余各家 —— 出问题时能立刻判定是「搬家搬坏了」还是「新接入写错了」。
@@ -58,8 +58,8 @@
 
 | 刀 | 需求 | 内容 | 状态 |
 |---|---|---|---|
-| **9** | [S-354](requirements/S-354.md) | 四条「宣称已交付」的补真：D-1 降级链路真接线 / D-2 六家渠道注册期收窄 `ChannelSendAudio` 可见性 / D-3 飞书 opus 注释与代码对齐 / D-5 补 `inferVoiceEncodeType` 等单测 | **待实施** |
-| **10** | [S-355](requirements/S-355.md) | 出站媒体读源加固：D-6 `maxBytes` + `AbortSignal.timeout` + `fs.promises` 替同步读（**与内存线同源**）；D-7 路径边界 —— **需拍板**，见 §三 | **待实施** |
+| **9** | [S-354](requirements/S-354.md) | 四条「宣称已交付」的补真：D-1 降级链路真接线 / D-2 六家渠道注册期收窄 `ChannelSendAudio` 可见性 / D-3 飞书 opus 注释与代码对齐 / D-5 补 `inferVoiceEncodeType` 等单测 | ✅ **已实施（`3922a827`）**，代码侧四条均核实；待真机 T-1 ~ T-3 |
+| **10** | [S-355](requirements/S-355.md) | 出站媒体读源加固：D-6 `maxBytes` + `AbortSignal.timeout` + `fs.promises` 替同步读（**与内存线同源**）；D-7 路径边界 —— **需拍板**，见 §三 | **D-6 ✅ 已实施（`30 MB` 上界 / 60 s 超时 / 异步读 + 7 条测试）**；**D-7 ⏳ 待拍板** |
 | **11** | [S-356](requirements/S-356.md) | 一致性残局：D-4 `imagePath` 旧名别名 / D-8 删死代码 `downloadUrl` / D-9 `fileType` 二选一 / D-10 渲染端三处声明同步 | **待实施** |
 | **12** | [S-357](requirements/S-357.md) | 引入 TS 侧 lint（`no-unused-vars` / `no-floating-promises` / `eqeqeq` 最小集，先出基线不清零） | **不占本迭代刀序**，单独立项 |
 
@@ -68,6 +68,10 @@
 **不立项**：D-12（`TODO/FIXME/HACK` 248 处 —— 收尾时统计增量即可）／D-13（`AgentLoop.cs` 847 行等，豁免理由成立，不强拆）。
 
 **待真机确认（T-1 ~ T-3）挂刀 9 验收**：微信 `playtime` 单位是毫秒还是秒 / `opus → OGG_SPEEX` 映射是否正确 / 飞书拒 mp3 还是静默转。
+
+> ⚠️ **第四条自省（2026-11-11 11:3x，第三次犯同一个病）**：`3922a827` 把 S-354 四条全做完了、测试也挂上了，**但 S-354.md 状态行、本表第 61 行、`raw-requirements.md:27` 三处仍写「待实施」**，直到刀 9 开工时才发现「做完了却没关单」。
+> 11-09 是「**关了单，清单没清**」→ 11-11 上午是「**建了单，清单没更**」→ 现在是「**做完了单，没标状态**」。三次同根：**单子与清单两处各写各的**。
+> ⇒ 落刀前先 `git log --grep=<单号>` + 实读代码，**不信清单状态行**；改完代码的同一次编辑里就把状态行改掉。
 
 ## 二·丙、追加需求（2026-11-11 10:35 老大直接提，1 条）
 
@@ -85,7 +89,7 @@
 
 | 刀 | 需求 | 内容 | 状态 |
 |---|---|---|---|
-| **14** | [S-359](requirements/S-359.md) | 默认服务商选中未启用的 Ollama：自动挑选判据缺 `enabled` 硬门槛。**服务商层 + 模型层双层判据**（`enabled` + 有凭据 + 至少一个启用模型），统一 `isProviderUsable` + `resolveActiveProvider` / `activeModelId` 迁移，替换五处挑选逻辑，横幅判据并入同一实现 | ✅ **已实施（11:1x，门禁绿）** |
+| **14** | [S-359](requirements/S-359.md) | 默认服务商选中未启用的 Ollama：自动挑选判据缺 `enabled` 硬门槛。**服务商层 + 模型层双层判据**（`enabled` + 有凭据 + 至少一个启用模型），统一 `isProviderUsable` + `resolveActiveProvider` / `activeModelId` 迁移，替换五处挑选逻辑，横幅判据并入同一实现 | ✅ **已验收（11:26）** |
 
 **引入点**：`7fc9647a`（2026-11-05，S-318 A 段）给 `ensureBuiltinPresets` 新增的兜底用了 `requiresApiKey === false || !!apiKey`，**不看 `enabled`**。内置投影默认 `enabled: false`（`provider-materialization.ts:64`），Ollama 又免 key 且排在 preset 第 6 位 ⇒ 空配置启动必中，选中结果落盘后永久钉死。v1.0.8（`b68f8e37`）之前的几十个版本没有这段挑选，所以「以前一直没有」成立。
 

@@ -12,7 +12,8 @@
 | [S-352](requirements/S-352.md) | 渠道出站媒体通道 —— 统一接口只认文本，飞书/微信靠私有 IPC 直通 | **刀 0~3 已交付，代码收口** | **R-5** | 统一接口 `MessagingChannelService`（`channel-types.ts:132-156`）出站只有 `sendMessage(chatId, content: string)` / `replyMessage(messageId, content: string)`；而入站 `ChannelIncomingMessageData`（`:97-127`）有 `images` / `audio` / `mediaRefs` / `msgType` **四个媒体字段** ⇒ **收的方向有媒体，发的方向没有**。**八家**实况：飞书 `feishu-media-api.ts:199/220` 有，绕过统一接口走私有 IPC；**微信 `weixin-service.ts:159/168` 也有**（`sendImage` / `sendFile`，此前登记误判为「未验证」）；**钉钉 / Discord / QQ / Telegram / 企业微信 / WhatsApp 六家纯文本** |
 
 > **能力实测口径**：八家已全部实读（S-352 §3.3）。**飞书 + 微信有凭证**（老大 10:55），其余六家无凭证 ⇒ `supportedMediaKinds` 留空，**这是正确结论，不是失败**。
-> ⚠️ **订正（2026-11-11）**：此句原写「留空**自动降级发文本**」—— 降级链路代码存在但**全仓零 import（D-1），从未生效**，当前实际行为是 `throw`。真接线见 [S-354](requirements/S-354.md) 刀 9。
+> ⚠️ **订正（2026-11-11）**：此句原写「留空**自动降级发文本**」—— 降级链路代码存在但**全仓零 import（D-1），从未生效**，当前实际行为是 `throw`。
+> ✅ **已补真（`3922a827`）**：飞书 / 微信 12 处调用点改走 `sendMediaOrText(...)`，降级为实际行为 —— 见 [S-354](requirements/S-354.md) 刀 9。
 
 | 编号 | 标题 | 状态 | 上位 | 依据 |
 |---|---|---|---|---|
@@ -20,12 +21,12 @@
 
 ### 〇·乙、第二轮（2026-11-11 审查补刀，4 条）
 
-> 来源 [review-2026-11-11.md](requirements/review-2026-11-11.md)，刀序见 [plan.md](plan.md) §二·乙。**四条全部待实施。**
+> 来源 [review-2026-11-11.md](requirements/review-2026-11-11.md)，刀序见 [plan.md](plan.md) §二·乙。**四条中 S-354 已实施（`3922a827`，待真机 T-1~T-3），其余三条待实施。**
 
 | 编号 | 标题 | 状态 | 上位 | 依据 |
 |---|---|---|---|---|
-| [S-354](requirements/S-354.md) | 渠道出站媒体「宣称已交付」的四条没有真正生效 | **待实施**（刀 9） | R-5 | D-1 `channel-media.ts` **全仓零 import**，降级从未生效 → `plan.md:38` 的「✅ 已交付」已撤回；D-2 `ChannelSendAudio` 在六家渠道可见（`ChannelPluginToolProvider.cs:35` 无条件注册，`ChannelOnly = ["*:channel@*"]` 不区分渠道）但 `ResolveGenericRoute`（`:119-123`）只认 weixin/feishu ⇒ 一调即报 `Unsupported channel plugin tool`；D-3 `feishu-outbound-media.ts:71-77` 注释说「强制 .opus」代码没强制；D-5 本迭代新增约 500 行媒体代码**零断言** |
-| [S-355](requirements/S-355.md) | 出站媒体来源读取无上限、无超时、同步读，且不做路径边界 | **待实施**（刀 10，D-7 需拍板） | R-5 × 内存线 | D-6 `channel-media-source.ts`：`:44` `fetch` 无 `AbortSignal`/timeout、`:49` 无 `content-length` 校验无大小上限、`:59` `fs.readFileSync` 同步阻塞；微信侧 `encryptOutboundMedia` 再复制一份 ⇒ 峰值 2~3N。D-7 渠道会话免审批（`ToolCallProcessor.Approval.cs:81-84`）+ `source` 零校验 ⇒ `.ssh/id_rsa` 可被当图片发群 |
+| [S-354](requirements/S-354.md) | 渠道出站媒体「宣称已交付」的四条没有真正生效 | **已实施，待真机验收**（`3922a827`，刀 9 代码侧已收口） | R-5 | D-1 `channel-media.ts` 曾是孤儿文件 → 现已接线（飞书 6 处 + 微信 6 处 `sendMediaOrText`）；D-2 新增 `SupportsOutboundMedia`（`AgentRuntimeChannelPluginExecutor.cs:150`）在 `AgentRunContextPolicy.IsChannelMediaToolAvailable` 注册期收窄，与执行期路由同源；D-3 `feishu-outbound-media.ts:71-79` 注释改成实话（不转格式、不强制后缀）；D-5 `tests/channel-media` 已挂 `npm test` |
+| [S-355](requirements/S-355.md) | 出站媒体来源读取无上限、无超时、同步读，且不做路径边界 | **D-6 已实施，待真机验收；D-7 待拍板** | R-5 × 内存线 | D-6 `channel-media-source.ts`：`MAX_OUTBOUND_MEDIA_BYTES = 30 MB` + 流式累加 + `AbortSignal.timeout(60s)` + `fs.promises` 异步读，7 条测试；D-7 渠道会话免审批（`ToolCallProcessor.Approval.cs:81-84`）+ `source` 零校验 ⇒ `.ssh/id_rsa` 可被当图片发群 |
 | [S-356](requirements/S-356.md) | 渠道工具参数与声明的一致性残留 | **待实施**（刀 11） | R-5（S-353 续） | D-4 `imagePath` → `filePath` 改名后 `TryGetProp` 只回落 `file_path`↔`filePath`，旧名两者都不命中；D-8 `FeishuMediaApi.downloadUrl` 零外部调用；D-9 `fileType` executor 仍写、handler 标 `@deprecated` 并忽略；D-10 渲染端 `plugin-tools.ts:414` 缺 `ChannelSendAudio`，与 descriptor / C# 三处不同步 |
 | [S-357](requirements/S-357.md) | 引入 TS 侧 lint | **不占本迭代刀序** | 项目级 | D-11 `package.json` 里 eslint / prettier / biome **一个都没有**，根目录无 lint 配置。本轮 13 条里至少 3 条（D-1 孤儿文件 / D-8 零调用方法 / D-10 零调用导出）是 `no-unused-vars` 或「导出零引用」检查能自动抓的 |
 
@@ -43,7 +44,7 @@
 
 | 编号 | 标题 | 状态 | 上位 | 依据 |
 |---|---|---|---|---|
-| [S-359](requirements/S-359.md) | 默认服务商选中了未启用的 Ollama —— 自动挑选判据缺 `enabled` 硬门槛 | **✅ 已实施（2026-11-11 11:1x）** | 项目级（AI 服务商底座） | 引入点 `7fc9647a`（S-318 A 段，随 v1.0.8 `b68f8e37` 发布）：`ensureBuiltinPresets` 的兜底写 `nextProviders.find((p) => p.requiresApiKey === false \|\| !!p.apiKey) ?? nextProviders[0]`，**零 `enabled` 判断**。内置投影默认 `enabled: preset.defaultEnabled ?? false`（`provider-materialization.ts:64`），Ollama 免 key 且排在 preset 第 6 位 ⇒ 空配置启动必中；选中结果落盘后 `activeExists` 恒真 ⇒ 永久钉死。dev 实测：盘里五家 `enabled && apiKey && models>0` 被晾着，active 指向 `enabled=false / apiKey='' / models=[]` 的 Ollama。**判据分裂**：横幅（`use-input-area-selectors.ts:218-225`）本来就对（`enabled && (免 key \|\| 有 key)`），store 五处全不看 enabled。修复 = `isProviderUsable`（**服务商 `enabled` + 有凭据 + 至少一个启用模型**，先筛再挑）+ `resolveActiveProvider` / `activeModelId` 启动迁移（存在且可用才算有效）+ 五处替换。**第二层（老大 11:20）**：服务商选对后模型仍是停用的 —— `pickDefaultModel` 第一档 `m.id === provider.defaultModel` 不看 `enabled`、末档 `models[0]` 无条件；实测小米套餐选中 `enabled=false` 的 `mimo-v2.5-pro`，唯一启用的 `mimo-v2.6-flash` 被跳过。⇒ `pickDefaultModel` 只从启用模型里挑。**空集合 = 不选**，由既有横幅引导配置（老大 11:06）。门禁：typecheck 三配置 0 错 / `npm test` 131/131 / `provider-presets` 579 assertions |
+| [S-359](requirements/S-359.md) | 默认服务商选中了未启用的 Ollama —— 自动挑选判据缺 `enabled` 硬门槛 | **✅ 已验收通过（2026-11-11 11:26）** | 项目级（AI 服务商底座） | 引入点 `7fc9647a`（S-318 A 段，随 v1.0.8 `b68f8e37` 发布）：`ensureBuiltinPresets` 的兜底写 `nextProviders.find((p) => p.requiresApiKey === false \|\| !!p.apiKey) ?? nextProviders[0]`，**零 `enabled` 判断**。内置投影默认 `enabled: preset.defaultEnabled ?? false`（`provider-materialization.ts:64`），Ollama 免 key 且排在 preset 第 6 位 ⇒ 空配置启动必中；选中结果落盘后 `activeExists` 恒真 ⇒ 永久钉死。dev 实测：盘里五家 `enabled && apiKey && models>0` 被晾着，active 指向 `enabled=false / apiKey='' / models=[]` 的 Ollama。**判据分裂**：横幅（`use-input-area-selectors.ts:218-225`）本来就对（`enabled && (免 key \|\| 有 key)`），store 五处全不看 enabled。修复 = `isProviderUsable`（**服务商 `enabled` + 有凭据 + 至少一个启用模型**，先筛再挑）+ `resolveActiveProvider` / `activeModelId` 启动迁移（存在且可用才算有效）+ 五处替换。**第二层（老大 11:20）**：服务商选对后模型仍是停用的 —— `pickDefaultModel` 第一档 `m.id === provider.defaultModel` 不看 `enabled`、末档 `models[0]` 无条件；实测小米套餐选中 `enabled=false` 的 `mimo-v2.5-pro`，唯一启用的 `mimo-v2.6-flash` 被跳过。⇒ `pickDefaultModel` 只从启用模型里挑。**空集合 = 不选**，由既有横幅引导配置（老大 11:06）。门禁：typecheck 三配置 0 错 / `npm test` 131/131 / `provider-presets` 579 assertions |
 
 ## 一、挂账与阻塞继承（6 条，不占刀序）
 > 前 5 条从 [../iter-v3-8/raw-requirements.md](../iter-v3-8/raw-requirements.md) §二 原样继承，**没有一条在本迭代变得可做**。状态行不改，只换挂靠的迭代文档。

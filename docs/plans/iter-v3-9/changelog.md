@@ -173,3 +173,15 @@
   - **`activeModelId` 也迁移**：`ensureBuiltinPresets` 从「为空才补」改为「不存在 **或未启用** 就重挑」—— 否则老盘里那个停用模型永远拨不回来。
   - **判据现在两层一致**：服务商层与服务商内的模型层都以 `enabled` 为硬门槛；插件侧 `app-plugin-store.ts:176-178` 早就是这套双层判断，本次只是把 store 侧对齐。
   - **测试**：新增「零模型不可用 / 全部模型停用不可用 / `defaultModel` 指向停用模型时跳过（小米场景）/ 全停用无默认模型」4 条断言，套件 579 assertions。
+- **11:26 老大「验收通过」** ⇒ S-359 关单。两轮判据修正（服务商层 `enabled` + 模型层 `enabled`）均已在 dev 实例实测生效；提交 `924e76f2`（未推送）。
+- **11:30 老大「继续推进」** ⇒ 刀 9 开工，**发现 `3922a827` 早已做完 S-354，但三处清单仍写「待实施」** —— 第三次犯「单子与清单各写各的」。
+  - 核实（不只看提交信息）：`channel-media` 12 处 `sendMediaOrText` 调用点、`SupportsOutboundMedia` 与 `IsChannelMediaToolAvailable` 同源、飞书 audio 注释已改实话、`npm run test:channel-media` 通过。四条**均真实生效**。
+  - 订正：`S-354.md` 状态行 + §9 开放问题结案 + 新增 §10 实施记录；`plan.md` §二·乙 第 9 行、第 40/41 行（「降级未接线」假结论）、`raw-requirements.md:15/23/27`。
+  - **新规矩**：落刀前先 `git log --grep=<单号>` + 实读代码，**不信清单状态行**。
+- **刀 10 / S-355 D-6** ⇒ 出站媒体读源加固落地。
+  - `MAX_OUTBOUND_MEDIA_BYTES = 30 MB`：**底座护栏，不复刻平台限制**。飞书 30MB / 图片 10MB、微信语音 60s 这些是平台规则，会变；抄进读源入口等于维护两份真相。护栏只回答「一次读多少字节算失控」。
+  - URL 分支：`AbortSignal.timeout(60s)` + 先判 `content-length` + **不信声明值**（`getReader()` 边读边累加，超限 `cancel()` 断连）。
+  - 本地分支：`existsSync`+`readFileSync` → `fs.promises.stat`+`readFile`，`stat.size` 先判、读后再判（TOCTOU 兜底）。
+  - 顺带补两处可读错误：`Not a file:`（传目录，此前是 EISDIR）、`empty body`（此前静默 0 字节）。
+  - **测试**：`tests/channel-media` 新增 `runSourceCases()` 7 条，含本地起 `http` 服务实测「声明值超限」与「chunked 流式超限」。超时不进套件（跑一次 60s），走 S-355 §8 手工验收。
+  - **D-7 仍未拍板**（`source` 路径边界 A/B/C），本刀不动 —— 见 plan.md §三 第 3 条。微信侧 `encryptOutboundMedia` 的二次复制也没动：加上界后峰值从「无界」变「≤3×30MB」，可控。

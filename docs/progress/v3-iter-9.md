@@ -6,6 +6,7 @@
 - VERDICT: PASS（自动化回归全绿；真机验收项见 §遗留）
 - 产品版本: 1.0.9
 - Tag: v1.0.9
+- Commit: `127a39bb`（merge commit，tag 指向它）
 - 日期: 2026-11-11
 - 迭代定位：**回归底座，一条新功能都不加。** 老大 2026-11-09 10:33 一句「本仓主要是负责做插件底座，不负责具体功能实现」把 R 系重新切了一刀 —— 把「通道能力」和「功能实现」混成一件事是我此前的错误。切完之后 R-1 听 / R-4 插件化在本仓都已落地，R-3 反代整条关闭，**只剩 R-2「说」缺的正是出站那一格**。所以这一迭代只做一件事：把渠道出站媒体通道补上。补完之后 R-1 / R-2 在本仓的底座就齐了，只剩插件本体在别的项目。
 
@@ -60,6 +61,17 @@
 - `dotnet build tests/WishfulClaw.Tests.sln -t:Rebuild` **0 警告 0 错误**
 - `npm run test:channel-media` / `test:token-format` / `test:provider-presets` 单套均通过
 - 真机口径（老大定）：dev 实例上反复跑过的即实测通过。**已过**：S-359（11:26 验收通过）。
+
+## 发布（2026-11-11 14:0x）
+
+| 项 | 内容 |
+|---|---|
+| 安装包 | `release/wishful-claw-1.0.9-setup.exe`（107,508,938 B / 102.53 MB） |
+| blockmap | `release/wishful-claw-1.0.9-setup.exe.blockmap`（112,154 B） |
+| 官网下载目录（更新源） | 四件套上传，逐件 sha512 校验通过；`latest.yml` 的 `version=1.0.9`、`path` / `files[0].url` / `sha512` / `size` 与本地 exe 逐项一致；`.blockmap` 保留 1.0.5 ~ 1.0.9 五版（HEAD 全 200） |
+| GitHub Release（存档） | <https://github.com/wishful-73/wishful-claw/releases/tag/v1.0.9> —— 三资产 `state=uploaded`，`draft=false` / `prerelease=false`，`releases/latest` 返回 `v1.0.9` |
+| 更新说明 | `release-notes-1.0.9.md` 已在清单同目录（清单不带 `releaseNotes` 属正常态） |
+| 端到端 | **未做** —— 需用低于当前版本的本地包实际跑一次 `checkForUpdates()`，会启动安装程序，留给老大手动进行 |
 
 ## 遗留
 

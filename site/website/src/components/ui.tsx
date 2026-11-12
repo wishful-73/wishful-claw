@@ -81,7 +81,10 @@ export const assetSources: Record<number, string> = {
   10: './screenshots/scheduled-task.png', // 定时任务页
   11: './screenshots/freechat.png', // 免费对话（2520×1608，全屏）
   12: './screenshots/search.png', // 快捷启动（1688×1050，热键浮窗小图）
-  13: './screenshots/ctrl_cv.png' // 剪贴板增强（1842×1251，面板小图）
+  13: './screenshots/ctrl_cv.png', // 剪贴板增强（1842×1251，面板小图）
+  // 2026-11-12（老大）：首屏主图回到 Hero，参照 deepseek.com/harness 的排布。
+  // 尺寸 1920×1482（比例 1.2955，非 2520×1608 全屏规格），只给 Hero 用，别塞进「真干活」轮播舞台。
+  14: './screenshots/hero-main.png' // 首屏主界面（聊天 + 侧栏，浅色主题）
 }
 
 // 素材位：有真图渲染真图，没有则渲染占位框（阶段 2 替换用，编号对应官网方案第四节素材清单）

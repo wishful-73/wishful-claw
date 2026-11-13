@@ -1,11 +1,16 @@
 import { BRAND, footer } from '../content/site'
 import { formatCount, MIN_VISIBLE_COUNT, useSiteStats } from '../lib/site-stats'
+import { shellPadding } from '../components/ui'
 
 export function SiteFooter() {
   const visits = useSiteStats()?.visits
   return (
-    <footer className="border-t border-ink-700 bg-paper-soft py-12">
-      <div className="flex w-full flex-col gap-4 px-6 text-sm text-ink-900/55 sm:flex-row sm:items-center sm:justify-between sm:px-10 lg:px-14">
+    // 页脚背景改透明（2026-11-13 老大：「底部有背景色，导致跟主页和其它页面的宽度看起来都别扭，
+    // 要不底部的也搞成背景透明」）：内容按 `shellPadding` 收进 224 留白后，通栏的浅灰色块
+    // 就成了一条比内容宽出一大截的横带，边界跟上面的内容对不上。去掉色块，只留 `border-t`
+    // 一条通栏分隔线 —— 分隔线通栏、内容留白，这是常规做法，不会再产生「谁比谁宽」的错觉。
+    <footer className="border-t border-ink-700 py-12">
+      <div className={`flex w-full flex-col gap-4 text-sm text-ink-900/55 sm:flex-row sm:items-center sm:justify-between ${shellPadding}`}>
         <div className="flex flex-col gap-3">
           <p className="flex items-center gap-2 font-semibold text-ink-950">
             <img src="./logo.png" alt={`${BRAND.name} Logo`} className="h-5 w-5 rounded" />

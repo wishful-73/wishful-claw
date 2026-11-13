@@ -1,5 +1,5 @@
 import { valueLadder } from '../content/site'
-import { Reveal } from '../components/ui'
+import { Reveal, container } from '../components/ui'
 
 // 2026-09-21（S-127 方案 A）：原来是 Section（py-24 + 英文眉标 + 大标题 + 三张 283px 的卡）整块 618px，
 // 搬到 Hero 之上后把产品主标题挤出首屏 ⇒ 压成 Hero 之后的一条窄带：去掉 Section 的 py-24 与英文眉标
@@ -10,7 +10,7 @@ import { Reveal } from '../components/ui'
 export function ValueLadder() {
   return (
     <section id="value-ladder" className="scroll-mt-24 pb-5">
-      <div className="w-full px-6 sm:px-10 lg:px-14">
+      <div className={container}>
         <Reveal>
           <div className="rounded-[13px] border border-ink-700 bg-paper-soft px-8 py-7">
             <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">

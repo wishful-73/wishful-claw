@@ -32,6 +32,28 @@ export function Reveal(props: { children: ReactNode; className?: string }) {
   )
 }
 
+// 首页内容区容器（2026-11-13 老大：首屏截图宽度固定后，下面元素在宽屏上比图宽很多）。
+//
+// 起因：首屏主图一直是**唯一**挂了宽度上限的容器（`max-w-6xl`），6 个 Section、价值带、
+// 文案区全是通栏 `w-full`。于是 1152 以下两者都通栏、看着对齐；一过 1152 图被夹住、
+// 别的继续撑满 —— 1440 差 288px、1920 差 768px。
+// 裁定的方向是**把上限加给所有容器，不动那张图**：图是标尺，它 1152（内容宽 1040）不变。
+//
+// ⚠️ 这条**推翻了 2026-09-23「去掉 max-w-5xl 收束、内容铺满屏宽」** —— 铺满在大屏上确实是
+// 问题，收束值从 5xl 的 1024 换成 6xl 的 1152。**范围仅首页**（2026-11-13 老大：「只改首页」）；
+// 下载页 / 指引页维持原样，别顺手「统一」。
+// 顶栏与页脚**不套这个**：老大要的是「适当增加一点间距，但不用跟这些一样」，
+// 所以它们保持通栏、只把断点后的左右内边距加大（见 site-header / site-footer）。
+export const container = 'mx-auto w-full max-w-6xl px-6 sm:px-10 lg:px-14'
+
+// 通栏容器的左右内边距 —— 顶栏、页脚、下载页、指引页四处共用（2026-11-13 老大：
+// 「下载页和指引页内容区域的左右间距需要跟头尾对齐」）。
+//
+// ⚠️ 这四条**必须走同一个常量**。它们宽度一致是老大明确要的视觉结果；各写一份类名，
+// 下次调一处就又是「宽屏对不齐」——那正是这一轮要解决的问题。
+// 与首页的 `container` 是两套：首页收 `max-w-6xl`（跟主图对齐），这几处不收、只加留白。
+export const shellPadding = 'px-6 sm:px-10 lg:px-14 xl:px-32 2xl:px-48 min-[1920px]:px-56'
+
 // `paddingTopClass` 可选：默认 `pt-24`。给「上一块是窄带、想让本块标题落进第一屏」的区块用
 // （2026-09-23 老大：「它能干什么」跟上面隔了 176px 空白，标题掉出首屏）。
 export function Section(props: {
@@ -43,8 +65,9 @@ export function Section(props: {
 }) {
   return (
     <section id={props.id} className={`scroll-mt-24 pb-24 ${props.paddingTopClass ?? 'pt-24'}`}>
-      {/* 2026-09-23（老大）：去掉 max-w-5xl 的宽度收束，内容直接铺满屏宽，只留内边距 */}
-      <div className="w-full px-6 sm:px-10 lg:px-14">
+      {/* 2026-09-23（老大）：去掉 max-w-5xl 的宽度收束，内容直接铺满屏宽，只留内边距。
+          2026-11-13 反过来了：收束加回来，值改 6xl（= 首屏主图宽度），见上面 `container` 的说明。 */}
+      <div className={container}>
         {props.title && (
           <div className="mb-12">
             {props.eyebrow && (

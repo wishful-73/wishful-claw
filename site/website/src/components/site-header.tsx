@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BRAND, nav } from '../content/site'
+import { shellPadding } from './ui'
 
 // shrink-0 + whitespace-nowrap：中文在 flex 里会被压到任意字后换行（品牌名从四字改两字后顶栏竖排），
 // 顶栏所有文本项都不许折行。
@@ -24,7 +25,12 @@ export function SiteHeader() {
         scrolled ? 'border-ink-700 bg-paper/85 backdrop-blur' : 'border-transparent bg-transparent'
       }`}
     >
-      <div className="flex h-14 w-full items-center justify-between gap-4 px-6 sm:px-10 lg:px-14">
+      {/* 2026-11-13：正文收进 max-w-6xl 后，顶栏仍通栏，但把宽屏两侧留白加厚
+          （`xl:px-32` 128px / `2xl:px-48` 192px / `min-[1920px]:px-56` 224px）。
+          老大：「顶部和页脚可以适当增加一点间距，但是不用跟这些一样」→「再加一点」。
+          间距值收在 ui.tsx 的 `shellPadding`，下载页 / 指引页共用同一份 —— **别改成 container**，
+          导航比首页正文宽是刻意的。 */}
+      <div className={`flex h-14 w-full items-center justify-between gap-4 ${shellPadding}`}>
         <a href="./" className="flex shrink-0 items-center gap-2 whitespace-nowrap text-[15px] font-semibold text-ink-950">
           <img src="./logo.png" alt={`${BRAND.name} Logo`} className="h-6 w-6 rounded" />
           {BRAND.name}

@@ -1,4 +1,4 @@
-import { assetSources } from '../components/ui'
+import { assetSources, container } from '../components/ui'
 import { PlatformIcon } from '../components/platform-icons'
 import { BRAND, hero } from '../content/site'
 import { ConvergeStreams } from './converge-streams'
@@ -55,7 +55,10 @@ export function Hero() {
   return (
     <section className="relative isolate pt-28 pb-16 sm:pt-36">
       <ConvergeStreams />
-      <div className="w-full px-6 text-center sm:px-10 lg:px-14">
+      {/* 2026-11-13：文案区与下面主图共用同一个容器 —— 首屏是这一页的门面，
+          两边底色一致才看得出左边缘是一条线。此前这里是通栏，主图却挂在 max-w-6xl 里，
+          宽屏上文案比图宽出一截。 */}
+      <div className={`${container} text-center`}>
         <p className="reveal mb-3 text-sm tracking-[0.24em] text-ink-900/55">
           {BRAND.name} {BRAND.latin}
         </p>
@@ -92,7 +95,7 @@ export function Hero() {
           图片按 1920×1482 原始比例完整显示（`h-auto w-full`），底部自然落到首屏外。
           想加回钳制前先读文件头注释里的实测数据；`relative` 也不能省 —— 父级 section 是 `isolate`，
           ConvergeStreams 的负 z-index 层会盖住它。 */}
-      <div className="reveal relative mx-auto mt-12 w-full max-w-6xl px-6 sm:mt-16 sm:px-10 lg:px-14">
+      <div className={`reveal relative mt-12 sm:mt-16 ${container}`}>
         <div className="mx-auto w-full overflow-hidden rounded-[16px] bg-paper-soft ring-1 ring-ink-700 shadow-[0_24px_72px_-24px_rgba(16,18,32,0.38)]">
           <img
             src={assetSources[14]}

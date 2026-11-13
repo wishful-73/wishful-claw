@@ -1,4 +1,5 @@
 import { assetSources } from '../components/ui'
+import { PlatformIcon } from '../components/platform-icons'
 import { BRAND, hero } from '../content/site'
 import { ConvergeStreams } from './converge-streams'
 
@@ -38,23 +39,49 @@ import { ConvergeStreams } from './converge-streams'
 //   代价（已确认要这个效果，别再加 maxHeight 裁回去）：1440×900 下图溢出首屏约 440px、
 //   1920×1080 约 260px，页面因此变长；标题与 CTA 位置不受影响（实测 h1Bottom 292 / ctaBottom 484 不变）。
 // 顺序上必须留在 CTA 之后 —— 先在首屏把「是什么 / 怎么拿」说完，再给眼睛看产品长什么样。
+//
+// 2026-11-13（S-360，老大拍板方案 A）：首屏重排三处 ——
+//   ① 眉标从 `BRAND.vision`「心之所向，心想事成」换成「心相 WishfulClaw」。
+//      vision 那句诗意但不回答「这是什么」，而首屏第一行是访客目光落点；它没丢，页脚本来就在用
+//      （site-footer.tsx:14）。**BRAND.vision 字段保留，不要删**。
+//   ② H1 从 52px 提到 64px。**不要给 highlight 加 `block`** —— 2026-11-13 11:3x 老大
+//      「大标题别换行呀，我看着有点别扭」：第一版强制两行（`block`），上下两行字重相同、整块成了
+//      一个方框，反而糊。现在 10 个字（「不止于聊，更在于行」）在 64px 下约 640px，
+//      `max-w-4xl`（896px）放得下，自然单行；视口更窄时才由浏览器自己折行。
+//   ③ 三短句（真干活 / 真本地 / 真透明）**加了又删**：2026-11-13 11:29 老大「下面本来就有类似的东西，
+//      你这给了就重复了」。valueLadder + features + advantages 讲的就是这三条，首屏再列一遍又成了
+//      「区块之间重复自己」。**不要再加回来。**
 export function Hero() {
   return (
     <section className="relative isolate pt-28 pb-16 sm:pt-36">
       <ConvergeStreams />
       <div className="w-full px-6 text-center sm:px-10 lg:px-14">
-        <p className="reveal mb-3 text-sm tracking-[0.24em] text-ink-900/45">{BRAND.vision}</p>
-        <h1 className="reveal mx-auto max-w-3xl text-4xl leading-tight font-semibold tracking-tight text-ink-950 sm:text-[52px] sm:leading-[1.15]">
+        <p className="reveal mb-3 text-sm tracking-[0.24em] text-ink-900/55">
+          {BRAND.name} {BRAND.latin}
+        </p>
+        <h1 className="reveal mx-auto max-w-4xl text-4xl leading-tight font-semibold tracking-tight text-ink-950 sm:text-[64px] sm:leading-[1.15]">
           {hero.title.lead}
           <span className="text-accent">{hero.title.highlight}</span>
         </h1>
-        <p className="reveal mx-auto mt-5 max-w-2xl text-lg leading-relaxed text-ink-900/65">{hero.subtitle}</p>
+        {/* `text-balance` 必须有：33 字在 `max-w-2xl` 下会被断成「…不只是 / 聊给你听。」——
+            末行只剩五个字。交给浏览器均衡断行，两行长度才接近。 */}
+        <p className="reveal mx-auto mt-5 max-w-2xl text-lg leading-relaxed text-balance text-ink-900/65">
+          {hero.subtitle}
+        </p>
+        {/* CTA 抄 deepseek.com/harness 的形状（2026-11-13 老大「下载按钮再去抄下他们的样式」）。
+            实测参考站：41px 高、全胶囊（`border-radius: 100px`）、15px/500、左侧平台图标 + 15~18px 内边距。
+            **只抄形状与度量，不抄配色** —— 参考站是深色底（`body` `rgb(10,10,10)`）配白胶囊，
+            本站是浅色暖底，白胶囊会糊进背景，继续用 accent。
+            也不抄右侧的「分割线 + 下拉箭头」：参考站那半截是换源菜单，本站首屏点进 `/download`
+            再选，多一个入口反而啰嗦。光效（`.dl-current` / `.dl-shine`）同样不上 —— 参考站此按钮
+            `box-shadow: none`，光环留给下载页的「当前可下」那颗。 */}
         <div className="reveal mt-9 flex flex-wrap items-center justify-center gap-4">
           <a
             href={hero.primaryCtaHref}
             data-converge-target
-            className="rounded-[10px] bg-accent px-7 py-3 text-base font-semibold text-white transition-opacity hover:opacity-90"
+            className="inline-flex h-[41px] items-center gap-2 rounded-full bg-accent px-6 text-[15px] font-medium text-white transition-opacity hover:opacity-90"
           >
+            <PlatformIcon id="windows" className="size-4 shrink-0" />
             {hero.primaryCta}
           </a>
         </div>
